@@ -162,13 +162,18 @@ function friendlyAuthError(code) {
 // ─────────────────────────────────────────────────────────────
 // Admin Drawer
 // ─────────────────────────────────────────────────────────────
-function openDrawer() {
+async function openDrawer() {
   drawerOpen = true;
   elDrawer.classList.remove("hidden");
   elDrawer.classList.add("drawer-open");
   elDrawerBackdrop.classList.remove("hidden");
   elBtnAdminPanel.setAttribute("aria-expanded", "true");
-  renderAdminList();
+
+  // Always re-fetch so the panel reflects the latest Firestore state,
+  // even if the initial loadCriteria() hadn't finished when the user
+  // clicks the button.  loadCriteria() calls renderAdminList() at the
+  // end, so no extra call is needed here.
+  await loadCriteria();
 }
 
 function closeDrawer() {
@@ -203,8 +208,10 @@ async function loadCriteria() {
       updateBadges();
     }
 
-    // refresh admin panel if open
-    if (drawerOpen) renderAdminList();
+    // Always keep the admin panel in sync with the latest data.
+    // If the drawer is closed this is a no-op visually, but the list
+    // will be correct the instant the user opens it.
+    renderAdminList();
 
   } catch (err) {
     console.error("Firestore load error:", err);
