@@ -543,12 +543,63 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 14px 0;
+  gap: 16px;
+  padding: 13px 0;
   border-bottom: 1px solid var(--border);
+  transition: opacity var(--transition);
 }
 .subcriteria-row:last-child { border-bottom: none; }
+
+/* Faded state when score = 0 */
+.subcriteria-row.row--cleared .subcriteria-text { opacity: .45; }
+.subcriteria-row.row--cleared .score-circles     { opacity: .4; }
+
 .subcriteria-text { font-size: .9rem; color: var(--text-secondary); flex: 1; min-width: 0; line-height: 1.45; }
+
+/* Controls wrapper: [clear] [not-eval label] [circles] */
+.row-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Clear button */
+.btn-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+.btn-clear:hover {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  transform: scale(1.08);
+}
+/* Dim the clear button when already cleared */
+.subcriteria-row.row--cleared .btn-clear {
+  opacity: .4;
+  pointer-events: none;
+}
+
+/* "Not evaluated" label */
+.not-eval-label {
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: .01em;
+  white-space: nowrap;
+  font-style: italic;
+  transition: opacity var(--transition);
+}
 
 .score-circles { display: flex; gap: 8px; flex-shrink: 0; }
 .circle {
@@ -597,6 +648,7 @@ body {
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 540px) {
   .subcriteria-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .row-controls { gap: 8px; }
   .score-circles { gap: 6px; }
   .circle { width: 26px; height: 26px; }
   .card-header { flex-direction: column; gap: 10px; }

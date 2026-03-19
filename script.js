@@ -14,8 +14,6 @@ import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDurtWkI0PVo3Mkdc57-YCaMWS8RlEyjbY",
   authDomain: "evaluation-tool-4b30e.firebaseapp.com",
@@ -36,7 +34,7 @@ const auth = getAuth(app);
 // ─────────────────────────────────────────────────────────────
 // App State
 // ─────────────────────────────────────────────────────────────
-const scores = {};          // scores[criteriaId][subIndex] = 1–5 | null
+const scores = {};          // scores[criteriaId][subIndex] = 0–5  (0 = not evaluated)
 let criteriaList = [];      // cached from Firestore
 let currentUser  = null;    // Firebase User | null
 let drawerOpen   = false;
@@ -487,16 +485,36 @@ function showApp() {
 // ─────────────────────────────────────────────────────────────
 // Evaluator: Scoring
 // ─────────────────────────────────────────────────────────────
+/**
+ * Returns the average score for a criteria.
+ *
+ * Rules:
+ *   - 0 is a valid score and IS included in the average.
+ *     e.g. [4, 4, 0] → average = 2.667
+ *   - undefined means the row was never initialised (shouldn't happen
+ *     after renderEvaluator runs, but treated as incomplete).
+ *
+ * Return values:
+ *   null           — at least one row is undefined (not initialised)
+ *   number (0–5)   — straight average of all sub-criteria scores
+ */
 function averageScore(criteriaId, subCount) {
-  const rows = scores[criteriaId] || {};
   if (subCount === 0) return null;
+  const rows = scores[criteriaId] || {};
   const values = [];
+
   for (let i = 0; i < subCount; i++) {
     const v = rows[i];
-    if (v == null) return null;
+    if (v === undefined) {
+      console.log(`[averageScore] ${criteriaId}[${i}] is undefined — incomplete`);
+      return null;   // not yet initialised
+    }
     values.push(v);
   }
-  return values.reduce((a, b) => a + b, 0) / values.length;
+
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  console.log(`[averageScore] ${criteriaId} scores:`, values, '→ avg:', avg);
+  return avg;
 }
 
 function updateBadges() {
@@ -508,12 +526,16 @@ function updateBadges() {
     const badge = document.querySelector(`[data-badge="${criteria.id}"]`);
     if (!badge) return;
 
+    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
+
     if (avg === null) {
+      // Uninitialised row(s) — treat as incomplete
       allScored = false;
       allPass   = false;
       badge.className   = "badge pending";
       badge.textContent = "–";
     } else {
+      // 0 is a valid score; simply compare average to threshold
       const pass = avg >= criteria.threshold;
       if (!pass) allPass = false;
       badge.className   = `badge ${pass ? "pass" : "fail"}`;
@@ -525,8 +547,9 @@ function updateBadges() {
     elOverallBadge.className   = "badge pending";
     elOverallBadge.textContent = "–";
   } else if (!allScored) {
+    // null avg means some rows were never initialised (shouldn't normally happen)
     elOverallBadge.className   = "badge pending";
-    elOverallBadge.textContent = "Incomplete";
+    elOverallBadge.textContent = "–";
   } else {
     elOverallBadge.className   = `badge ${allPass ? "pass" : "fail"}`;
     elOverallBadge.textContent = allPass ? "Pass" : "Fail";
@@ -534,12 +557,36 @@ function updateBadges() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Evaluator: Circles
+// Evaluator: Circles & Clear
 // ─────────────────────────────────────────────────────────────
-function renderCircles(rowEl, score) {
+
+/**
+ * Visual state for a sub-criteria row based on its current score.
+ * score 0 = not evaluated (cleared), 1–5 = rated.
+ */
+function applyRowState(rowEl, score) {
+  // Update circles
   rowEl.querySelectorAll(".circle").forEach(c => {
     c.classList.toggle("filled", parseInt(c.dataset.value, 10) <= score);
   });
+
+  // Faded / not-evaluated visual
+  const isCleared = score === 0;
+  rowEl.classList.toggle("row--cleared", isCleared);
+
+  // "Not evaluated" label
+  let label = rowEl.querySelector(".not-eval-label");
+  if (isCleared) {
+    if (!label) {
+      label = document.createElement("span");
+      label.className = "not-eval-label";
+      label.textContent = "Not evaluated";
+      // Insert just before the controls wrapper
+      rowEl.querySelector(".row-controls").prepend(label);
+    }
+  } else {
+    if (label) label.remove();
+  }
 }
 
 function onCircleClick(e) {
@@ -550,8 +597,22 @@ function onCircleClick(e) {
   const value  = parseInt(circle.dataset.value, 10);
 
   if (!scores[cid]) scores[cid] = {};
-  scores[cid][idx] = value;
-  renderCircles(row, value);
+  scores[cid][idx] = value;                      // write BEFORE recalc
+  console.log(`[onCircleClick] ${cid}[${idx}] → ${value}`, scores[cid]);
+  applyRowState(row, value);
+  updateBadges();
+}
+
+function onClearClick(e) {
+  const btn = e.currentTarget;
+  const row = btn.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+
+  if (!scores[cid]) scores[cid] = {};
+  scores[cid][idx] = 0;                          // write BEFORE recalc
+  console.log(`[onClearClick] ${cid}[${idx}] → 0`, scores[cid]);
+  applyRowState(row, 0);
   updateBadges();
 }
 
@@ -562,7 +623,9 @@ function renderEvaluator(criteriaArr) {
   elCriteriaContainer.innerHTML = "";
 
   criteriaArr.forEach((criteria, cardIndex) => {
+    // Default every sub-criterion to 0 (not evaluated)
     scores[criteria.id] = {};
+    (criteria.subCriteria || []).forEach((_, i) => { scores[criteria.id][i] = 0; });
 
     const card = document.createElement("div");
     card.className = "criteria-card";
@@ -597,7 +660,7 @@ function renderEvaluator(criteriaArr) {
 
     (criteria.subCriteria || []).forEach((sub, subIdx) => {
       const row = document.createElement("div");
-      row.className = "subcriteria-row";
+      row.className = "subcriteria-row row--cleared"; // start cleared
       row.dataset.criteriaId = criteria.id;
       row.dataset.subIndex   = subIdx;
 
@@ -605,6 +668,28 @@ function renderEvaluator(criteriaArr) {
       text.className   = "subcriteria-text";
       text.textContent = sub;
 
+      // Controls wrapper (clear btn + not-eval label + circles)
+      const controls = document.createElement("div");
+      controls.className = "row-controls";
+
+      // Clear button
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "btn-clear";
+      clearBtn.type      = "button";
+      clearBtn.title     = "Reset score";
+      clearBtn.setAttribute("aria-label", "Reset score to not evaluated");
+      clearBtn.innerHTML = `
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>`;
+      clearBtn.addEventListener("click", onClearClick);
+
+      // "Not evaluated" label (shown when score = 0)
+      const notEvalLabel = document.createElement("span");
+      notEvalLabel.className = "not-eval-label";
+      notEvalLabel.textContent = "Not evaluated";
+
+      // Circles
       const circles = document.createElement("div");
       circles.className = "score-circles";
       circles.setAttribute("role", "group");
@@ -620,8 +705,12 @@ function renderEvaluator(criteriaArr) {
         circles.appendChild(circle);
       }
 
+      controls.appendChild(clearBtn);
+      controls.appendChild(notEvalLabel); // visible when cleared
+      controls.appendChild(circles);
+
       row.appendChild(text);
-      row.appendChild(circles);
+      row.appendChild(controls);
       list.appendChild(row);
     });
 
