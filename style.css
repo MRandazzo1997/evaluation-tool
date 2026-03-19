@@ -170,6 +170,30 @@ body {
 
 .btn--full { width: 100%; }
 
+/* Guide download links */
+.btn-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  font-family: var(--font-main);
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-guide:hover {
+  color: var(--text-secondary);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
 /* ─── Fields ────────────────────────────────────────────────── */
 .field {
   width: 100%;
