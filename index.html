@@ -1,9 +1,65 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Evaluation Tool</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <h1>It works 🎉</h1>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-mark"></span>
+        <span class="brand-name">EvalKit</span>
+      </div>
+      <button class="btn-print" onclick="window.print()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+        Print
+      </button>
+    </div>
+  </header>
+
+  <main class="main-content">
+
+    <!-- Loading state -->
+    <div id="state-loading" class="state-view">
+      <div class="spinner"></div>
+      <p>Loading criteria…</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="state-error" class="state-view hidden">
+      <div class="state-icon">⚠</div>
+      <p id="error-message">Something went wrong.</p>
+    </div>
+
+    <!-- Empty state -->
+    <div id="state-empty" class="state-view hidden">
+      <div class="state-icon">◻</div>
+      <p>No criteria found.<br>Add documents to the <code>criteria</code> collection in Firestore.</p>
+    </div>
+
+    <!-- Criteria cards -->
+    <div id="criteria-container" class="criteria-container hidden"></div>
+
+    <!-- Overall result -->
+    <div id="overall-result" class="overall-result hidden">
+      <span class="overall-label">Overall Result</span>
+      <span id="overall-badge" class="badge"></span>
+    </div>
+
+  </main>
+
+  <!-- Firebase CDN (modular v10) -->
+  <script type="module" src="script.js"></script>
+
 </body>
 </html>
