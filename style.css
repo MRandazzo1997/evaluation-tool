@@ -472,7 +472,7 @@ body {
   position: relative;
 }
 .subcriteria-row.row--below-min .subcriteria-text::after {
-  content: "Below min";
+  content: "Sotto il minimo";
   display: inline-block;
   margin-left: 8px;
   font-size: .68rem;
@@ -626,8 +626,8 @@ body {
 .subcriteria-row:last-child { border-bottom: none; }
 
 /* Faded state when score = 0 */
-.subcriteria-row.row--cleared .subcriteria-text { opacity: .45; }
-.subcriteria-row.row--cleared .score-circles     { opacity: .4; }
+.subcriteria-row.row--cleared .subcriteria-text { opacity: 1; }
+.subcriteria-row.row--cleared .score-circles     { opacity: 1; }
 
 .subcriteria-text { font-size: .9rem; color: var(--text-secondary); flex: 1; min-width: 0; line-height: 1.45; }
 
