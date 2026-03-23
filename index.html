@@ -20,19 +20,19 @@
       <div class="header-actions">
         <a href="user-guide.pdf" download class="btn-guide no-print" title="Download user instructions">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-          Guida Utente
+          User Guide
         </a>
         <a id="link-admin-guide" href="admin-guide.pdf" download class="btn-guide admin-only hidden no-print" title="Download admin instructions">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-          Guida Admin
+          Admin Guide
         </a>
         <button id="btn-admin-panel" class="btn-ghost admin-only hidden no-print" aria-expanded="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          Sezione Admin
+          Admin Panel
         </button>
         <button class="btn-ghost no-print" onclick="window.print()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          Stampa
+          Print
         </button>
         <button id="btn-login"  class="btn-primary auth-logged-out no-print">Login</button>
         <div id="user-info" class="user-info auth-logged-in hidden no-print">
@@ -54,23 +54,46 @@
       <div class="drawer-header">
         <h2 class="drawer-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          Sezione Admin
+          Admin Panel
         </h2>
         <button id="btn-close-drawer" class="btn-icon" aria-label="Close panel">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
 
+      <!-- Global Settings -->
+      <section class="drawer-section">
+        <h3 class="section-label">Global Settings</h3>
+        <div class="add-form">
+          <label class="field-label" for="setting-min-threshold">Minimum score per sub-criteria</label>
+          <div class="settings-row">
+            <input id="setting-min-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
+          </div>
+          <p class="field-hint">Any sub-criteria below this score will force the criteria to fail.</p>
+
+          <label class="field-label" for="setting-warn-threshold">Warning threshold (comment required)</label>
+          <div class="settings-row">
+            <input id="setting-warn-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
+          </div>
+          <p class="field-hint">Sub-criteria below this score will show a comment reminder. Does not affect Pass/Fail.</p>
+
+          <button id="btn-save-settings" class="btn-primary btn--full">Save Settings</button>
+          <span id="settings-msg" class="inline-msg hidden"></span>
+        </div>
+      </section>
+
+      <div class="drawer-divider"></div>
+
       <!-- Add criteria -->
       <section class="drawer-section">
-        <h3 class="section-label">Aggiungi Nuovo Criterio</h3>
+        <h3 class="section-label">Add New Criteria</h3>
         <div class="add-form">
-          <input id="new-title"     type="text"   class="field" placeholder="Titolo del criterio" />
-          <input id="new-threshold" type="number" class="field field--sm" placeholder="Soglia (1–5)" step="0.1" min="0" max="5" />
+          <input id="new-title"     type="text"   class="field" placeholder="Criteria title" />
+          <input id="new-threshold" type="number" class="field field--sm" placeholder="Threshold (1–5)" step="0.1" min="0" max="5" />
           <p id="add-error" class="form-error hidden"></p>
           <button id="btn-add-criteria" class="btn-primary btn--full">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Aggiungi Criterio
+            Add Criteria
           </button>
         </div>
       </section>
@@ -79,9 +102,9 @@
 
       <!-- Existing criteria -->
       <section class="drawer-section">
-        <h3 class="section-label">Criteri Esistenti</h3>
+        <h3 class="section-label">Existing Criteria</h3>
         <div id="admin-list" class="admin-list">
-          <div class="admin-empty">Nessun criterio disponibile.</div>
+          <div class="admin-empty">No criteria yet.</div>
         </div>
       </section>
 
@@ -95,20 +118,20 @@
       <div class="modal-header">
         <div class="modal-brand">
           <span class="brand-mark brand-mark--sm"></span>
-          <h2 id="modal-title" class="modal-title">Login Admin</h2>
+          <h2 id="modal-title" class="modal-title">Admin Login</h2>
         </div>
         <button id="btn-close-modal" class="btn-icon" aria-label="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <p class="modal-subtitle">Accedi per gestire i criteri di valutazione.</p>
+      <p class="modal-subtitle">Sign in to manage evaluation criteria.</p>
       <div class="modal-body">
         <label class="field-label" for="login-email">Email</label>
         <input id="login-email" type="email" class="field" placeholder="you@example.com" autocomplete="email" />
         <label class="field-label" for="login-password">Password</label>
         <input id="login-password" type="password" class="field" placeholder="••••••••" autocomplete="current-password" />
         <p id="login-error" class="form-error hidden"></p>
-        <button id="btn-submit-login" class="btn-primary btn--full">Accedi</button>
+        <button id="btn-submit-login" class="btn-primary btn--full">Sign In</button>
       </div>
     </div>
   </div>
@@ -117,19 +140,19 @@
   <main class="main-content">
     <div id="state-loading" class="state-view">
       <div class="spinner"></div>
-      <p>Caricando criteri…</p>
+      <p>Loading criteria…</p>
     </div>
     <div id="state-error" class="state-view hidden">
       <div class="state-icon">⚠</div>
-      <p id="error-message">Qualcosa è andato storto.</p>
+      <p id="error-message">Something went wrong.</p>
     </div>
     <div id="state-empty" class="state-view hidden">
       <div class="state-icon">◻</div>
-      <p>Nessun criterio trovato.<br>Utilizza la Sezione Admin per aggiungere criteri.</p>
+      <p>No criteria found.<br>Use the Admin Panel to add criteria.</p>
     </div>
     <div id="criteria-container" class="criteria-container hidden"></div>
     <div id="overall-result" class="overall-result hidden">
-      <span class="overall-label">Risultato Complessivo</span>
+      <span class="overall-label">Overall Result</span>
       <span id="overall-badge" class="badge"></span>
     </div>
   </main>

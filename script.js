@@ -7,7 +7,7 @@ import { initializeApp }
 
 import {
   getFirestore, collection, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, orderBy, query, writeBatch
+  deleteDoc, doc, getDoc, orderBy, query, setDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import {
@@ -38,6 +38,8 @@ const scores = {};          // scores[criteriaId][subIndex] = 0–5  (0 = not ev
 let criteriaList = [];      // cached from Firestore
 let currentUser  = null;    // Firebase User | null
 let drawerOpen   = false;
+let subCriteriaMinThreshold     = 0; // loaded from settings/config
+let subCriteriaWarningThreshold = 0; // loaded from settings/config
 
 // ─────────────────────────────────────────────────────────────
 // DOM References
@@ -129,7 +131,7 @@ async function handleLogin() {
   const password = elLoginPassword.value;
 
   if (!email || !password) {
-    showError(elLoginError, "Per favore inserisci la tua email e password.");
+    showError(elLoginError, "Please enter your email and password.");
     return;
   }
 
@@ -150,13 +152,13 @@ async function handleLogin() {
 
 function friendlyAuthError(code) {
   const map = {
-    "auth/user-not-found":      "Nessun account trovato con quella email.",
-    "auth/wrong-password":      "Password errata.",
-    "auth/invalid-email":       "Per favore inserisci un indirizzo email valido.",
-    "auth/too-many-requests":   "Troppi tentativi. Per favore riprova più tardi.",
-    "auth/invalid-credential":  "Email o password non validi.",
+    "auth/user-not-found":      "No account found with that email.",
+    "auth/wrong-password":      "Incorrect password.",
+    "auth/invalid-email":       "Please enter a valid email address.",
+    "auth/too-many-requests":   "Too many attempts. Please try again later.",
+    "auth/invalid-credential":  "Invalid email or password.",
   };
-  return map[code] || "Accesso fallito. Per favore verifica le tue credenziali e riprova.";
+  return map[code] || "Sign in failed. Please check your credentials.";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -215,14 +217,90 @@ async function loadCriteria() {
 
   } catch (err) {
     console.error("Firestore load error:", err);
-    elErrorMessage.textContent = `Errore nel caricamento dei criteri: ${err.message}`;
+    elErrorMessage.textContent = `Failed to load criteria: ${err.message}`;
     showState("error");
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// Firestore: Add
+// Firestore: Settings
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Loads settings/config from Firestore.
+ * Falls back to 0 if the document doesn't exist yet.
+ */
+async function loadSettings() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "config"));
+    if (snap.exists()) {
+      const data = snap.data();
+
+      const min = data.subCriteriaMinThreshold;
+      subCriteriaMinThreshold = (typeof min === "number" && !isNaN(min)) ? min : 0;
+
+      const warn = data.subCriteriaWarningThreshold;
+      subCriteriaWarningThreshold = (typeof warn === "number" && !isNaN(warn)) ? warn : 0;
+    } else {
+      subCriteriaMinThreshold     = 0;
+      subCriteriaWarningThreshold = 0;
+    }
+    console.log("[loadSettings] min =", subCriteriaMinThreshold, "warn =", subCriteriaWarningThreshold);
+    // Sync admin inputs if the drawer is already rendered
+    const inpMin  = $("setting-min-threshold");
+    const inpWarn = $("setting-warn-threshold");
+    if (inpMin)  inpMin.value  = subCriteriaMinThreshold;
+    if (inpWarn) inpWarn.value = subCriteriaWarningThreshold;
+  } catch (err) {
+    console.warn("[loadSettings] Failed:", err.message);
+    subCriteriaMinThreshold     = 0;
+    subCriteriaWarningThreshold = 0;
+  }
+}
+
+/**
+ * Persists the min-threshold value to settings/config (creates or merges).
+ */
+async function saveSettings() {
+  const inpMin  = $("setting-min-threshold");
+  const inpWarn = $("setting-warn-threshold");
+  const btnSave = $("btn-save-settings");
+  const msgEl   = $("settings-msg");
+
+  const valMin  = parseFloat(inpMin.value);
+  const valWarn = parseFloat(inpWarn.value);
+
+  if (isNaN(valMin) || valMin < 0 || valMin > 5) {
+    showInlineMsg(msgEl, "Minimum must be between 0 and 5", "err");
+    return;
+  }
+  if (isNaN(valWarn) || valWarn < 0 || valWarn > 5) {
+    showInlineMsg(msgEl, "Warning threshold must be between 0 and 5", "err");
+    return;
+  }
+
+  btnSave.disabled = true;
+  btnSave.textContent = "Saving…";
+
+  try {
+    await setDoc(doc(db, "settings", "config"), {
+      subCriteriaMinThreshold:     valMin,
+      subCriteriaWarningThreshold: valWarn,
+    }, { merge: true });
+
+    subCriteriaMinThreshold     = valMin;
+    subCriteriaWarningThreshold = valWarn;
+    console.log("[saveSettings] min →", valMin, "warn →", valWarn);
+    showInlineMsg(msgEl, "Saved", "ok");
+    // Re-evaluate immediately so badges and row indicators update
+    updateBadges();
+  } catch (err) {
+    showInlineMsg(msgEl, "Error: " + err.message, "err");
+  } finally {
+    btnSave.disabled = false;
+    btnSave.textContent = "Save";
+  }
+}
 async function addCriteria() {
   const title     = elNewTitle.value.trim();
   const threshold = parseFloat(elNewThreshold.value);
@@ -230,16 +308,16 @@ async function addCriteria() {
   hideError(elAddError);
 
   if (!title) {
-    showError(elAddError, "Per favore inserisci un titolo.");
+    showError(elAddError, "Please enter a title.");
     return;
   }
   if (isNaN(threshold) || threshold < 0 || threshold > 5) {
-    showError(elAddError, "La soglia deve essere un numero compreso tra 0 e 5.");
+    showError(elAddError, "Threshold must be a number between 0 and 5.");
     return;
   }
 
   elBtnAddCriteria.disabled = true;
-  elBtnAddCriteria.textContent = "Aggiungendo…";
+  elBtnAddCriteria.textContent = "Adding…";
 
   try {
     const newOrder = criteriaList.length > 0
@@ -257,14 +335,14 @@ async function addCriteria() {
     elNewThreshold.value = "";
     await loadCriteria();
   } catch (err) {
-    showError(elAddError, `Errore nell'aggiunta del criterio: ${err.message}`);
+    showError(elAddError, `Failed to add: ${err.message}`);
   } finally {
     elBtnAddCriteria.disabled = false;
-    elBtnAddCriteria.textContent = "Aggiungi Criterio";
+    elBtnAddCriteria.textContent = "Add Criteria";
     // restore button icon
     elBtnAddCriteria.innerHTML = `
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Aggiungi Criterio`;
+      Add Criteria`;
   }
 }
 
@@ -274,10 +352,10 @@ async function addCriteria() {
 async function saveCriteria(id, data, msgEl) {
   try {
     await updateDoc(doc(db, "criteria", id), data);
-    showInlineMsg(msgEl, "Salvato", "ok");
+    showInlineMsg(msgEl, "Saved", "ok");
     await loadCriteria();
   } catch (err) {
-    showInlineMsg(msgEl, "Errore: " + err.message, "err");
+    showInlineMsg(msgEl, "Error: " + err.message, "err");
   }
 }
 
@@ -285,14 +363,14 @@ async function saveCriteria(id, data, msgEl) {
 // Firestore: Delete
 // ─────────────────────────────────────────────────────────────
 async function deleteCriteria(id, cardEl) {
-  if (!confirm("Eliminare questo criterio? Questa operazione non può essere annullata.")) return;
+  if (!confirm("Delete this criteria? This cannot be undone.")) return;
   try {
     cardEl.style.opacity = "0.4";
     cardEl.style.pointerEvents = "none";
     await deleteDoc(doc(db, "criteria", id));
     await loadCriteria();
   } catch (err) {
-    alert("Eliminazione fallita: " + err.message);
+    alert("Delete failed: " + err.message);
     cardEl.style.opacity = "";
     cardEl.style.pointerEvents = "";
   }
@@ -310,10 +388,16 @@ function showInlineMsg(el, text, type) {
 }
 
 function renderAdminList() {
+  // Keep the global-settings inputs in sync with current in-memory values
+  const settingInpMin  = $("setting-min-threshold");
+  const settingInpWarn = $("setting-warn-threshold");
+  if (settingInpMin)  settingInpMin.value  = subCriteriaMinThreshold;
+  if (settingInpWarn) settingInpWarn.value = subCriteriaWarningThreshold;
+
   elAdminList.innerHTML = "";
 
   if (criteriaList.length === 0) {
-    elAdminList.innerHTML = '<div class="admin-empty">Nessun criterio ancora. Aggiungine uno qui sopra.</div>';
+    elAdminList.innerHTML = '<div class="admin-empty">No criteria yet. Add one above.</div>';
     return;
   }
 
@@ -332,13 +416,13 @@ function renderAdminList() {
     titleInput.type  = "text";
     titleInput.className = "field";
     titleInput.value = criteria.title;
-    titleInput.placeholder = "Titolo";
+    titleInput.placeholder = "Criteria title";
 
     const threshInput = document.createElement("input");
     threshInput.type  = "number";
     threshInput.className = "field field--sm";
     threshInput.value = criteria.threshold;
-    threshInput.placeholder = "Soglia";
+    threshInput.placeholder = "Threshold";
     threshInput.step  = "0.1";
     threshInput.min   = "0";
     threshInput.max   = "5";
@@ -354,7 +438,7 @@ function renderAdminList() {
 
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn-primary btn-save";
-    saveBtn.textContent = "Salva";
+    saveBtn.textContent = "Save";
 
     const msgEl = document.createElement("span");
     msgEl.className = "inline-msg hidden";
@@ -366,7 +450,7 @@ function renderAdminList() {
     deleteBtn.className = "btn-delete";
     deleteBtn.innerHTML = `
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-      Cancella`;
+      Delete`;
 
     actionsRow.appendChild(saveRow);
     actionsRow.appendChild(deleteBtn);
@@ -381,7 +465,7 @@ function renderAdminList() {
 
     const subLabel = document.createElement("div");
     subLabel.className = "sub-section-label";
-    subLabel.textContent = "Sub-criterio";
+    subLabel.textContent = "Sub-criteria";
 
     const subList = document.createElement("div");
     subList.className = "admin-sub-list";
@@ -399,7 +483,7 @@ function renderAdminList() {
         input.type  = "text";
         input.className = "field";
         input.value = sub;
-        input.placeholder = `Sub-criterio ${idx + 1}`;
+        input.placeholder = `Sub-criteria ${idx + 1}`;
         input.addEventListener("input", () => { localSubs[idx] = input.value; });
 
         const removeBtn = document.createElement("button");
@@ -425,7 +509,7 @@ function renderAdminList() {
     addSubBtn.type = "button";
     addSubBtn.innerHTML = `
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Aggiungi sub-criterio`;
+      Add Sub-criteria`;
     addSubBtn.addEventListener("click", () => {
       localSubs.push("");
       rebuildSubRows();
@@ -444,9 +528,9 @@ function renderAdminList() {
       const newTitle = titleInput.value.trim();
       const newThresh = parseFloat(threshInput.value);
 
-      if (!newTitle) { showInlineMsg(msgEl, "Il titolo è obbligatorio", "err"); return; }
+      if (!newTitle) { showInlineMsg(msgEl, "Title is required", "err"); return; }
       if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
-        showInlineMsg(msgEl, "Soglia deve essere compresa tra 0 e 5", "err"); return;
+        showInlineMsg(msgEl, "Threshold must be 0–5", "err"); return;
       }
 
       saveBtn.disabled = true;
@@ -460,7 +544,7 @@ function renderAdminList() {
       }, msgEl);
 
       saveBtn.disabled = false;
-      saveBtn.textContent = "Salva";
+      saveBtn.textContent = "Save";
     });
 
     deleteBtn.addEventListener("click", () => deleteCriteria(criteria.id, card));
@@ -524,6 +608,35 @@ function averageScore(criteriaId, subCount) {
   return avg;
 }
 
+/**
+ * Adds or removes the "below-min" and "below-warning" CSS classes
+ * on each rendered sub-criteria row for a given criteria.
+ *
+ *  row--below-min     : score is 1–(minThreshold-1) → forced FAIL indicator
+ *  row--below-warning : score is 1–(warnThreshold-1) AND above min → comment required
+ *
+ * Score 0 (not evaluated) is excluded from both indicators.
+ */
+function updateRowMinIndicators(criteriaId, subCount) {
+  const rows = scores[criteriaId] || {};
+  for (let i = 0; i < subCount; i++) {
+    const rowEl = document.querySelector(
+      `.subcriteria-row[data-criteria-id="${criteriaId}"][data-sub-index="${i}"]`
+    );
+    if (!rowEl) continue;
+    const v = rows[i] ?? 0;
+
+    const belowMin  = subCriteriaMinThreshold     > 0 && v > 0 && v < subCriteriaMinThreshold;
+    // Warning fires when score is above 0, below the warning threshold,
+    // but NOT already flagged as below-min (to avoid double-labelling).
+    const belowWarn = subCriteriaWarningThreshold > 0 && v > 0
+                      && v < subCriteriaWarningThreshold && !belowMin;
+
+    rowEl.classList.toggle("row--below-min",  belowMin);
+    rowEl.classList.toggle("row--below-warn", belowWarn);
+  }
+}
+
 function updateBadges() {
   let allScored = true;
   let allPass   = true;
@@ -533,21 +646,28 @@ function updateBadges() {
     const badge = document.querySelector(`[data-badge="${criteria.id}"]`);
     if (!badge) return;
 
-    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
+    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold} minSub=${subCriteriaMinThreshold}`);
 
     if (avg === null) {
-      // Uninitialised row(s) — treat as incomplete
       allScored = false;
       allPass   = false;
       badge.className   = "badge pending";
       badge.textContent = "–";
     } else {
-      // 0 is a valid score; simply compare average to threshold
-      const pass = avg >= criteria.threshold;
+      // Step 1: fail immediately if any sub-criteria is below the global minimum.
+      const rows = scores[criteria.id] || {};
+      const anyBelowMin = subCriteriaMinThreshold > 0 &&
+        Object.values(rows).some(v => v < subCriteriaMinThreshold);
+
+      // Step 2: compare average to the criteria threshold.
+      const pass = !anyBelowMin && avg >= criteria.threshold;
       if (!pass) allPass = false;
       badge.className   = `badge ${pass ? "pass" : "fail"}`;
-      badge.textContent = pass ? "Superato" : "Non superato";
+      badge.textContent = pass ? "Pass" : "Fail";
     }
+
+    // Update per-row visual indicator for scores below the global minimum
+    updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
   });
 
   if (criteriaList.length === 0) {
@@ -559,7 +679,7 @@ function updateBadges() {
     elOverallBadge.textContent = "–";
   } else {
     elOverallBadge.className   = `badge ${allPass ? "pass" : "fail"}`;
-    elOverallBadge.textContent = allPass ? "Superato" : "Non superato";
+    elOverallBadge.textContent = allPass ? "Pass" : "Fail";
   }
 }
 
@@ -587,7 +707,7 @@ function applyRowState(rowEl, score) {
     if (!label) {
       label = document.createElement("span");
       label.className = "not-eval-label";
-      label.textContent = "Non valutato";
+      label.textContent = "Not evaluated";
       // Insert just before the controls wrapper
       rowEl.querySelector(".row-controls").prepend(label);
     }
@@ -648,7 +768,7 @@ function renderEvaluator(criteriaArr) {
     titleEl.textContent = criteria.title;
     const threshEl  = document.createElement("div");
     threshEl.className   = "card-threshold";
-    threshEl.textContent = `Soglia: ${criteria.threshold}`;
+    threshEl.textContent = `Threshold: ${criteria.threshold}`;
     titleWrap.appendChild(titleEl);
     titleWrap.appendChild(threshEl);
 
@@ -694,7 +814,7 @@ function renderEvaluator(criteriaArr) {
       // "Not evaluated" label (shown when score = 0)
       const notEvalLabel = document.createElement("span");
       notEvalLabel.className = "not-eval-label";
-      notEvalLabel.textContent = "Non valutato";
+      notEvalLabel.textContent = "Not evaluated";
 
       // Circles
       const circles = document.createElement("div");
@@ -759,6 +879,15 @@ elBtnAddCriteria.addEventListener("click", addCriteria);
 elNewTitle.addEventListener("keydown",     e => { if (e.key === "Enter") elNewThreshold.focus(); });
 elNewThreshold.addEventListener("keydown", e => { if (e.key === "Enter") addCriteria(); });
 
+// Global settings
+document.addEventListener("click", e => {
+  if (e.target.id === "btn-save-settings") saveSettings();
+});
+document.addEventListener("keydown", e => {
+  if (e.target.id === "setting-min-threshold"  && e.key === "Enter") saveSettings();
+  if (e.target.id === "setting-warn-threshold" && e.key === "Enter") saveSettings();
+});
+
 // ─────────────────────────────────────────────────────────────
 // Auth State Observer
 // ─────────────────────────────────────────────────────────────
@@ -769,4 +898,5 @@ onAuthStateChanged(auth, user => {
 // ─────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────
+loadSettings();
 loadCriteria();

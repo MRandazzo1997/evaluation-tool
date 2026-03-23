@@ -439,7 +439,66 @@ body {
 .inline-msg.ok   { color: var(--pass-color); background: var(--pass-bg); }
 .inline-msg.err  { color: var(--fail-color); background: var(--fail-bg); }
 
-/* Sub-criteria admin section */
+/* Settings row: input + save side by side */
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.field-hint {
+  font-size: .76rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Sub-criteria row: below global minimum indicator */
+.subcriteria-row.row--below-min {
+  position: relative;
+}
+.subcriteria-row.row--below-min .subcriteria-text::after {
+  content: "Below min";
+  display: inline-block;
+  margin-left: 8px;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fail-color);
+  background: var(--fail-bg);
+  border: 1px solid var(--fail-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.subcriteria-row.row--below-min .score-circles .circle.filled {
+  border-color: var(--fail-color);
+  background: var(--fail-color);
+}
+
+/* Sub-criteria row: score below warning threshold — comment required */
+:root {
+  --warn-color:  #a85a00;
+  --warn-bg:     #fff7ed;
+  --warn-border: #f8d8aa;
+}
+.subcriteria-row.row--below-warn .subcriteria-text::after {
+  content: "⚠ Commento obbligatorio nel report di valutazione";
+  display: block;
+  margin-top: 5px;
+  font-size: .73rem;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--warn-color);
+  line-height: 1.4;
+  letter-spacing: .01em;
+}
+.subcriteria-row.row--below-warn .score-circles .circle.filled {
+  border-color: #e07a10;
+  background: #e07a10;
+}
+
 .admin-sub-section { padding: 12px 16px 14px; }
 .sub-section-label {
   font-size: .72rem;
@@ -575,8 +634,8 @@ body {
 .subcriteria-row:last-child { border-bottom: none; }
 
 /* Faded state when score = 0 */
-.subcriteria-row.row--cleared .subcriteria-text { opacity: 1; }
-.subcriteria-row.row--cleared .score-circles     { opacity: 1; }
+.subcriteria-row.row--cleared .subcriteria-text { opacity: .45; }
+.subcriteria-row.row--cleared .score-circles     { opacity: .4; }
 
 .subcriteria-text { font-size: .9rem; color: var(--text-secondary); flex: 1; min-width: 0; line-height: 1.45; }
 
