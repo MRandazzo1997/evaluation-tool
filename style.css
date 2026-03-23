@@ -452,6 +452,21 @@ body {
   line-height: 1.45;
 }
 
+/* Sub-criteria row: score below warning threshold — comment required */
+:root {
+  --warn-color:  #a85a00;
+  --warn-bg:     #fff7ed;
+  --warn-border: #f8d8aa;
+}
+.subcriteria-row.row--below-warn .subcriteria-text::after {
+  content: "";
+  display: none;
+}
+.subcriteria-row.row--below-warn .score-circles .circle.filled {
+  border-color: #e07a10;
+  background: #e07a10;
+}
+
 /* Sub-criteria row: below global minimum indicator */
 .subcriteria-row.row--below-min {
   position: relative;
@@ -475,28 +490,6 @@ body {
 .subcriteria-row.row--below-min .score-circles .circle.filled {
   border-color: var(--fail-color);
   background: var(--fail-color);
-}
-
-/* Sub-criteria row: score below warning threshold — comment required */
-:root {
-  --warn-color:  #a85a00;
-  --warn-bg:     #fff7ed;
-  --warn-border: #f8d8aa;
-}
-.subcriteria-row.row--below-warn .subcriteria-text::after {
-  content: "⚠ Commento obbligatorio nel report di valutazione";
-  display: block;
-  margin-top: 5px;
-  font-size: .73rem;
-  font-weight: 500;
-  font-style: italic;
-  color: var(--warn-color);
-  line-height: 1.4;
-  letter-spacing: .01em;
-}
-.subcriteria-row.row--below-warn .score-circles .circle.filled {
-  border-color: #e07a10;
-  background: #e07a10;
 }
 
 .admin-sub-section { padding: 12px 16px 14px; }
@@ -623,9 +616,8 @@ body {
 
 .subcriteria-list { padding: 0 24px; }
 .subcriteria-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   padding: 13px 0;
   border-bottom: 1px solid var(--border);
@@ -643,8 +635,57 @@ body {
 .row-controls {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.subcriteria-comment-wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: -2px;
+}
+
+.subcriteria-comment {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.comment-warning,
+.comment-error {
+  font-size: .76rem;
+  line-height: 1.4;
+}
+
+.comment-warning {
+  color: var(--warn-color);
+}
+
+.comment-error {
+  color: var(--danger);
+}
+
+.subcriteria-row.row--comment-required .subcriteria-comment {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.subcriteria-row.row--comment-required .subcriteria-comment:focus {
+  border-color: #e07a10;
+  box-shadow: 0 0 0 3px rgba(224,122,16,.12);
+}
+
+.subcriteria-row.row--comment-missing .subcriteria-comment {
+  border-color: var(--danger);
+  background: #fff8f7;
+}
+
+.subcriteria-row.row--comment-missing .subcriteria-comment:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(217,48,37,.12);
 }
 
 /* Clear button */
@@ -730,8 +771,8 @@ body {
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 540px) {
-  .subcriteria-row { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .row-controls { gap: 8px; }
+  .subcriteria-row { grid-template-columns: 1fr; gap: 10px; }
+  .row-controls { justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
   .score-circles { gap: 6px; }
   .circle { width: 26px; height: 26px; }
   .card-header { flex-direction: column; gap: 10px; }
@@ -751,4 +792,21 @@ body {
   .badge.pass { background: #e8f5ee !important; color: #1a7a4a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .badge.fail { background: #fdeaea !important; color: #b32d2d !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .admin-drawer, .modal-backdrop, .drawer-backdrop { display: none !important; }
+  .subcriteria-comment {
+    min-height: 0;
+    resize: none;
+    overflow: visible;
+    white-space: pre-wrap;
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .comment-warning,
+  .comment-error {
+    display: block !important;
+  }
+}
+
+
+.comment-error {
+  display: none;
 }

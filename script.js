@@ -34,7 +34,7 @@ const auth = getAuth(app);
 // ─────────────────────────────────────────────────────────────
 // App State
 // ─────────────────────────────────────────────────────────────
-const scores = {};          // scores[criteriaId][subIndex] = 0–5  (0 = not evaluated)
+const scores = {};          // scores[criteriaId][subIndex] = { score: 0-5, comment: string }
 let criteriaList = [];      // cached from Firestore
 let currentUser  = null;    // Firebase User | null
 let drawerOpen   = false;
@@ -595,17 +595,57 @@ function averageScore(criteriaId, subCount) {
   const values = [];
 
   for (let i = 0; i < subCount; i++) {
-    const v = rows[i];
-    if (v === undefined) {
+    const entry = rows[i];
+    if (entry === undefined) {
       console.log(`[averageScore] ${criteriaId}[${i}] is undefined — incomplete`);
       return null;   // not yet initialised
     }
-    values.push(v);
+    values.push(entry.score ?? 0);
   }
 
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
   console.log(`[averageScore] ${criteriaId} scores:`, values, '→ avg:', avg);
   return avg;
+}
+
+function ensureScoreEntry(criteriaId, subIndex) {
+  if (!scores[criteriaId]) scores[criteriaId] = {};
+  if (!scores[criteriaId][subIndex]) {
+    scores[criteriaId][subIndex] = { score: 0, comment: "" };
+  }
+  return scores[criteriaId][subIndex];
+}
+
+function isCommentRequired(score) {
+  return subCriteriaWarningThreshold > 0 && score > 0 && score < subCriteriaWarningThreshold;
+}
+
+function checkMissingComments() {
+  return criteriaList.some(criteria => {
+    const rows = scores[criteria.id] || {};
+    return (criteria.subCriteria || []).some((_, subIdx) => {
+      const entry = rows[subIdx];
+      if (!entry) return false;
+      return isCommentRequired(entry.score) && !entry.comment.trim();
+    });
+  });
+}
+
+function updateCommentState(rowEl, entry) {
+  const textarea = rowEl.querySelector(".subcriteria-comment");
+  const warning  = rowEl.querySelector(".comment-warning");
+  const error    = rowEl.querySelector(".comment-error");
+
+  if (!textarea || !warning || !error) return;
+
+  const required = isCommentRequired(entry.score);
+  const missing  = required && !entry.comment.trim();
+
+  rowEl.classList.toggle("row--comment-required", required);
+  rowEl.classList.toggle("row--comment-missing", missing);
+  textarea.required = required;
+  warning.classList.toggle("hidden", !required);
+  error.classList.toggle("hidden", !missing);
 }
 
 /**
@@ -624,22 +664,21 @@ function updateRowMinIndicators(criteriaId, subCount) {
       `.subcriteria-row[data-criteria-id="${criteriaId}"][data-sub-index="${i}"]`
     );
     if (!rowEl) continue;
-    const v = rows[i] ?? 0;
+    const entry = rows[i] || { score: 0, comment: "" };
+    const v = entry.score ?? 0;
 
     const belowMin  = subCriteriaMinThreshold     > 0 && v > 0 && v < subCriteriaMinThreshold;
-    // Warning fires when score is above 0, below the warning threshold,
-    // but NOT already flagged as below-min (to avoid double-labelling).
-    const belowWarn = subCriteriaWarningThreshold > 0 && v > 0
-                      && v < subCriteriaWarningThreshold && !belowMin;
+    const belowWarn = isCommentRequired(v);
 
     rowEl.classList.toggle("row--below-min",  belowMin);
     rowEl.classList.toggle("row--below-warn", belowWarn);
+    updateCommentState(rowEl, entry);
   }
 }
 
 function updateBadges() {
   let allScored = true;
-  let allPass   = true;
+  let anyCriterionFailed = false;
 
   criteriaList.forEach(criteria => {
     const avg   = averageScore(criteria.id, criteria.subCriteria.length);
@@ -650,18 +689,20 @@ function updateBadges() {
 
     if (avg === null) {
       allScored = false;
-      allPass   = false;
       badge.className   = "badge pending";
       badge.textContent = "–";
     } else {
       // Step 1: fail immediately if any sub-criteria is below the global minimum.
       const rows = scores[criteria.id] || {};
       const anyBelowMin = subCriteriaMinThreshold > 0 &&
-        Object.values(rows).some(v => v < subCriteriaMinThreshold);
+        Object.values(rows).some(entry => {
+          const value = entry?.score ?? 0;
+          return value > 0 && value < subCriteriaMinThreshold;
+        });
 
       // Step 2: compare average to the criteria threshold.
       const pass = !anyBelowMin && avg >= criteria.threshold;
-      if (!pass) allPass = false;
+      if (!pass) anyCriterionFailed = true;
       badge.className   = `badge ${pass ? "pass" : "fail"}`;
       badge.textContent = pass ? "Pass" : "Fail";
     }
@@ -678,8 +719,10 @@ function updateBadges() {
     elOverallBadge.className   = "badge pending";
     elOverallBadge.textContent = "–";
   } else {
-    elOverallBadge.className   = `badge ${allPass ? "pass" : "fail"}`;
-    elOverallBadge.textContent = allPass ? "Pass" : "Fail";
+    const hasMissingComments = checkMissingComments();
+    const overallPass = !anyCriterionFailed;// && !hasMissingComments;
+    elOverallBadge.className   = `badge ${overallPass ? "pass" : "fail"}`;
+    elOverallBadge.textContent = overallPass ? "Pass" : "Fail";
   }
 }
 
@@ -714,6 +757,10 @@ function applyRowState(rowEl, score) {
   } else {
     if (label) label.remove();
   }
+
+  const cid = rowEl.dataset.criteriaId;
+  const idx = parseInt(rowEl.dataset.subIndex, 10);
+  updateCommentState(rowEl, ensureScoreEntry(cid, idx));
 }
 
 function onCircleClick(e) {
@@ -723,8 +770,8 @@ function onCircleClick(e) {
   const idx    = parseInt(row.dataset.subIndex, 10);
   const value  = parseInt(circle.dataset.value, 10);
 
-  if (!scores[cid]) scores[cid] = {};
-  scores[cid][idx] = value;                      // write BEFORE recalc
+  const entry = ensureScoreEntry(cid, idx);
+  entry.score = value;                           // write BEFORE recalc
   console.log(`[onCircleClick] ${cid}[${idx}] → ${value}`, scores[cid]);
   applyRowState(row, value);
   updateBadges();
@@ -736,10 +783,22 @@ function onClearClick(e) {
   const cid = row.dataset.criteriaId;
   const idx = parseInt(row.dataset.subIndex, 10);
 
-  if (!scores[cid]) scores[cid] = {};
-  scores[cid][idx] = 0;                          // write BEFORE recalc
+  const entry = ensureScoreEntry(cid, idx);
+  entry.score = 0;                               // write BEFORE recalc
   console.log(`[onClearClick] ${cid}[${idx}] → 0`, scores[cid]);
   applyRowState(row, 0);
+  updateBadges();
+}
+
+function onCommentInput(e) {
+  const textarea = e.currentTarget;
+  const row = textarea.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+
+  const entry = ensureScoreEntry(cid, idx);
+  entry.comment = textarea.value;
+  updateCommentState(row, entry);
   updateBadges();
 }
 
@@ -750,9 +809,16 @@ function renderEvaluator(criteriaArr) {
   elCriteriaContainer.innerHTML = "";
 
   criteriaArr.forEach((criteria, cardIndex) => {
-    // Default every sub-criterion to 0 (not evaluated)
+    // Preserve local-only score/comment state across re-renders.
+    const existingRows = scores[criteria.id] || {};
     scores[criteria.id] = {};
-    (criteria.subCriteria || []).forEach((_, i) => { scores[criteria.id][i] = 0; });
+    (criteria.subCriteria || []).forEach((_, i) => {
+      const existingEntry = existingRows[i];
+      scores[criteria.id][i] = {
+        score: existingEntry?.score ?? 0,
+        comment: existingEntry?.comment ?? "",
+      };
+    });
 
     const card = document.createElement("div");
     card.className = "criteria-card";
@@ -786,6 +852,7 @@ function renderEvaluator(criteriaArr) {
     list.className = "subcriteria-list";
 
     (criteria.subCriteria || []).forEach((sub, subIdx) => {
+      const entry = ensureScoreEntry(criteria.id, subIdx);
       const row = document.createElement("div");
       row.className = "subcriteria-row row--cleared"; // start cleared
       row.dataset.criteriaId = criteria.id;
@@ -836,8 +903,31 @@ function renderEvaluator(criteriaArr) {
       controls.appendChild(notEvalLabel); // visible when cleared
       controls.appendChild(circles);
 
+      const commentWrap = document.createElement("div");
+      commentWrap.className = "subcriteria-comment-wrap";
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "field subcriteria-comment";
+      textarea.placeholder = "Inserisci un commento...";
+      textarea.rows = 3;
+      textarea.value = entry.comment;
+      textarea.addEventListener("input", onCommentInput);
+
+      const warning = document.createElement("p");
+      warning.className = "comment-warning hidden";
+      warning.textContent = "Commento obbligatorio nel report di valutazione";
+
+      const error = document.createElement("p");
+      error.className = "comment-error hidden";
+      error.textContent = "Commento obbligatorio";
+
       row.appendChild(text);
       row.appendChild(controls);
+      commentWrap.appendChild(textarea);
+      commentWrap.appendChild(warning);
+      commentWrap.appendChild(error);
+      row.appendChild(commentWrap);
+      applyRowState(row, entry.score);
       list.appendChild(row);
     });
 
