@@ -846,7 +846,7 @@ function updateBadges() {
       const pass = !anyBelowMin && avg >= criteria.threshold;
       if (!pass) anyCriterionFailed = true;
       badge.className   = `badge ${pass ? "pass" : "fail"}`;
-      badge.textContent = pass ? "Superato" : "Fallito";
+      badge.textContent = pass ? "Superato" : "Non Superato";
     }
 
     // Update per-row visual indicator for scores below the global minimum
@@ -864,7 +864,7 @@ function updateBadges() {
     const hasMissingComments = checkMissingComments();
     const overallPass = !anyCriterionFailed;// && !hasMissingComments;
     elOverallBadge.className   = `badge ${overallPass ? "pass" : "fail"}`;
-    elOverallBadge.textContent = overallPass ? "Superato" : "Fallito";
+    elOverallBadge.textContent = overallPass ? "Superato" : "Non Superato";
   }
 }
 

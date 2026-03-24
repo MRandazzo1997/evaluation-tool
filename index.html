@@ -69,13 +69,13 @@
           <div class="settings-row">
             <input id="setting-min-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
           </div>
-          <p class="field-hint">Qualsiasi sotto-criterio sotto questo punteggio farà fallire il criterio.</p>
+          <p class="field-hint">Qualsiasi sotto-criterio minore di questo punteggio non farà passare il criterio.</p>
 
           <label class="field-label" for="setting-warn-threshold">Commento obbligatorio se punteggio minore o uguale a:</label>
           <div class="settings-row">
             <input id="setting-warn-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
           </div>
-          <p class="field-hint">I sotto-criteri sotto questo punteggio mostreranno un promemoria per il commento. Non influisce su Superato/Fallito.</p>
+          <p class="field-hint">I sotto-criteri sotto questo punteggio mostreranno un promemoria per il commento. Non influisce su Superato/Non Superato.</p>
 
           <button id="btn-save-settings" class="btn-primary btn--full">Salva Impostazioni</button>
           <span id="settings-msg" class="inline-msg hidden"></span>
