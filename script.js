@@ -49,6 +49,7 @@ const $ = id => document.getElementById(id);
 const elBtnLogin        = $("btn-login");
 const elBtnLogout       = $("btn-logout");
 const elBtnAdminPanel   = $("btn-admin-panel");
+const elBtnDownloadPdf  = $("btn-download-pdf");
 const elUserInfo        = $("user-info");
 const elUserEmail       = $("user-email");
 
@@ -77,6 +78,8 @@ const elErrorMessage    = $("error-message");
 const elCriteriaContainer = $("criteria-container");
 const elOverallResult   = $("overall-result");
 const elOverallBadge    = $("overall-badge");
+const elSiteHeader      = document.querySelector(".site-header");
+const elMainContent     = document.querySelector(".main-content");
 
 // ─────────────────────────────────────────────────────────────
 // Auth UI
@@ -617,7 +620,7 @@ function ensureScoreEntry(criteriaId, subIndex) {
 }
 
 function isCommentRequired(score) {
-  return subCriteriaWarningThreshold > 0 && score > 0 && score < subCriteriaWarningThreshold;
+  return subCriteriaWarningThreshold >= 0 && score > 0 && score <= subCriteriaWarningThreshold;
 }
 
 function checkMissingComments() {
@@ -802,6 +805,153 @@ function onCommentInput(e) {
   updateBadges();
 }
 
+async function downloadPdf() {
+  const html2canvasLib = window.html2canvas;
+  const jsPdfCtor = window.jspdf?.jsPDF;
+
+  if (!html2canvasLib || !jsPdfCtor) {
+    alert("Generazione PDF non disponibile.");
+    return;
+  }
+
+  const originalLabel = elBtnDownloadPdf.innerHTML;
+  elBtnDownloadPdf.disabled = true;
+  elBtnDownloadPdf.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Generazione PDF...`;
+
+  try {
+    const exportRoot = createPdfExportRoot();
+    document.body.appendChild(exportRoot);
+
+    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+
+    const canvas = await html2canvasLib(exportRoot, {
+      scale: Math.min(window.devicePixelRatio || 1, 1.5),
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      width: exportRoot.scrollWidth,
+      height: exportRoot.scrollHeight,
+      windowWidth: exportRoot.scrollWidth,
+      windowHeight: exportRoot.scrollHeight,
+      ignoreElements: (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        return element.classList.contains("hidden") || element.classList.contains("no-print");
+      },
+    });
+
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPdfCtor("p", "mm", "a4");
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+      heightLeft -= pageHeight;
+    }
+
+    pdf.save("valutazione.pdf");
+  } catch (err) {
+    console.error("PDF generation error:", err);
+    alert("Generazione PDF non riuscita.");
+  } finally {
+    document.querySelector(".pdf-export-root")?.remove();
+    elBtnDownloadPdf.disabled = false;
+    elBtnDownloadPdf.innerHTML = originalLabel;
+  }
+}
+
+function createPdfExportRoot() {
+  const exportRoot = document.createElement("div");
+  const exportStyles = document.createElement("style");
+  const headerClone = elSiteHeader?.cloneNode(true);
+  const mainClone = elMainContent?.cloneNode(true);
+  const exportWidth = Math.max(
+    elMainContent?.scrollWidth || 0,
+    elMainContent?.clientWidth || 0,
+    900
+  );
+
+  exportRoot.className = "pdf-export-root";
+  exportRoot.style.position = "fixed";
+  exportRoot.style.left = "-20000px";
+  exportRoot.style.top = "0";
+  exportRoot.style.width = `${exportWidth}px`;
+  exportRoot.style.background = "#ffffff";
+  exportRoot.style.zIndex = "-1";
+
+  exportStyles.textContent = `
+    .pdf-export-root,
+    .pdf-export-root * {
+      animation: none !important;
+      transition: none !important;
+    }
+
+    .pdf-export-root .site-header {
+      position: static !important;
+      background: #ffffff !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      border-bottom: 1px solid #e2e0da !important;
+    }
+
+    .pdf-export-root .header-inner,
+    .pdf-export-root .main-content {
+      max-width: none !important;
+      width: 100% !important;
+    }
+
+    .pdf-export-root .main-content {
+      padding-top: 24px !important;
+      padding-bottom: 48px !important;
+      background: #ffffff !important;
+    }
+
+    .pdf-export-root .criteria-card,
+    .pdf-export-root .overall-result {
+      box-shadow: none !important;
+      border: 1px solid #e2e0da !important;
+    }
+
+    .pdf-export-root .circle.filled::after {
+      background: rgba(255, 255, 255, 0.14) !important;
+    }
+
+    .pdf-export-root .modal,
+    .pdf-export-root .modal-backdrop,
+    .pdf-export-root .drawer-backdrop,
+    .pdf-export-root .admin-drawer,
+    .pdf-export-root .header-actions,
+    .pdf-export-root .no-print {
+      display: none !important;
+    }
+  `;
+
+  if (headerClone instanceof HTMLElement) {
+    headerClone.querySelector(".header-actions")?.remove();
+    exportRoot.appendChild(headerClone);
+  }
+
+  if (mainClone instanceof HTMLElement) {
+    exportRoot.appendChild(mainClone);
+  }
+
+  exportRoot.prepend(exportStyles);
+  return exportRoot;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Evaluator: Render
 // ─────────────────────────────────────────────────────────────
@@ -950,6 +1100,9 @@ elLoginEmail.addEventListener("keydown",    e => { if (e.key === "Enter") elLogi
 
 // Logout
 elBtnLogout.addEventListener("click", () => signOut(auth));
+
+// PDF download
+elBtnDownloadPdf.addEventListener("click", downloadPdf);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());

@@ -30,9 +30,9 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           Pannello Admin
         </button>
-        <button class="btn-ghost no-print" onclick="window.print()">
+        <button id="btn-download-pdf" class="btn-ghost no-print" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          Stampa
+          Scarica PDF
         </button>
         <button id="btn-login" class="btn-primary auth-logged-out no-print">Accedi</button>
         <div id="user-info" class="user-info auth-logged-in hidden no-print">
@@ -64,13 +64,13 @@
       <section class="drawer-section">
         <h3 class="section-label">Impostazioni Globali</h3>
         <div class="add-form">
-          <label class="field-label" for="setting-min-threshold">Punteggio minimo per sotto-criterio</label>
+          <label class="field-label" for="setting-min-threshold">Punteggio minimo per sotto-criterio:</label>
           <div class="settings-row">
             <input id="setting-min-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
           </div>
           <p class="field-hint">Qualsiasi sotto-criterio sotto questo punteggio farà fallire il criterio.</p>
 
-          <label class="field-label" for="setting-warn-threshold">Soglia di avviso (commento obbligatorio)</label>
+          <label class="field-label" for="setting-warn-threshold">Commento obbligatorio se punteggio minore o uguale a:</label>
           <div class="settings-row">
             <input id="setting-warn-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
           </div>
@@ -154,6 +154,8 @@
     </div>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script type="module" src="script.js"></script>
 </body>
 </html>
