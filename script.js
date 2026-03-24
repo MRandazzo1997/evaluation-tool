@@ -38,8 +38,12 @@ const scores = {};          // scores[criteriaId][subIndex] = { score: 0-5, comm
 let criteriaList = [];      // cached from Firestore
 let currentUser  = null;    // Firebase User | null
 let drawerOpen   = false;
+let drawerResizeCleanup = null;
 let subCriteriaMinThreshold     = 0; // loaded from settings/config
 let subCriteriaWarningThreshold = 0; // loaded from settings/config
+const DRAWER_WIDTH_KEY = "evalkit-admin-drawer-width";
+const DRAWER_MIN_WIDTH = 360;
+const DRAWER_MAX_WIDTH = 900;
 
 // ─────────────────────────────────────────────────────────────
 // DOM References
@@ -64,6 +68,7 @@ const elLoginError      = $("login-error");
 const elDrawer          = $("admin-drawer");
 const elDrawerBackdrop  = $("drawer-backdrop");
 const elBtnCloseDrawer  = $("btn-close-drawer");
+const elDrawerResizeHandle = $("drawer-resize-handle");
 
 const elNewTitle        = $("new-title");
 const elNewThreshold    = $("new-threshold");
@@ -169,6 +174,7 @@ function friendlyAuthError(code) {
 // ─────────────────────────────────────────────────────────────
 async function openDrawer() {
   drawerOpen = true;
+  applyStoredDrawerWidth();
   elDrawer.classList.remove("hidden");
   elDrawer.classList.add("drawer-open");
   elDrawerBackdrop.classList.remove("hidden");
@@ -182,11 +188,73 @@ async function openDrawer() {
 }
 
 function closeDrawer() {
+  stopDrawerResize();
   drawerOpen = false;
   elDrawer.classList.add("hidden");
   elDrawer.classList.remove("drawer-open");
   elDrawerBackdrop.classList.add("hidden");
   elBtnAdminPanel.setAttribute("aria-expanded", "false");
+}
+
+function clampDrawerWidth(width) {
+  const viewportLimit = Math.max(DRAWER_MIN_WIDTH, window.innerWidth - 120);
+  return Math.min(Math.max(width, DRAWER_MIN_WIDTH), Math.min(DRAWER_MAX_WIDTH, viewportLimit));
+}
+
+function setDrawerWidth(width, persist = true) {
+  if (!elDrawer) return;
+  const clampedWidth = clampDrawerWidth(width);
+  elDrawer.style.width = `${clampedWidth}px`;
+  if (persist) {
+    localStorage.setItem(DRAWER_WIDTH_KEY, String(clampedWidth));
+  }
+}
+
+function applyStoredDrawerWidth() {
+  if (window.innerWidth <= 540) {
+    elDrawer?.style.removeProperty("width");
+    return;
+  }
+
+  const storedWidth = parseInt(localStorage.getItem(DRAWER_WIDTH_KEY) || "", 10);
+  if (!Number.isFinite(storedWidth)) {
+    elDrawer?.style.removeProperty("width");
+    return;
+  }
+
+  setDrawerWidth(storedWidth, false);
+}
+
+function stopDrawerResize() {
+  if (typeof drawerResizeCleanup === "function") {
+    drawerResizeCleanup();
+    drawerResizeCleanup = null;
+  }
+  document.body.classList.remove("drawer-resizing");
+}
+
+function startDrawerResize(event) {
+  if (!elDrawer || window.innerWidth <= 540) return;
+
+  event.preventDefault();
+  document.body.classList.add("drawer-resizing");
+
+  const handlePointerMove = (moveEvent) => {
+    const nextWidth = window.innerWidth - moveEvent.clientX;
+    setDrawerWidth(nextWidth);
+  };
+
+  const handlePointerUp = () => {
+    stopDrawerResize();
+  };
+
+  window.addEventListener("pointermove", handlePointerMove);
+  window.addEventListener("pointerup", handlePointerUp, { once: true });
+
+  drawerResizeCleanup = () => {
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", handlePointerUp);
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1245,6 +1313,17 @@ elBtnDownloadPdf.addEventListener("click", downloadPdf);
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());
 elBtnCloseDrawer.addEventListener("click", closeDrawer);
 elDrawerBackdrop.addEventListener("click", closeDrawer);
+elDrawerResizeHandle?.addEventListener("pointerdown", startDrawerResize);
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth <= 540) {
+    stopDrawerResize();
+    elDrawer?.style.removeProperty("width");
+    return;
+  }
+
+  applyStoredDrawerWidth();
+});
 
 // Close drawer on Escape
 document.addEventListener("keydown", e => {

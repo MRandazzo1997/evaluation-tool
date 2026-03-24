@@ -315,6 +315,36 @@ body {
   transform: translateX(0);
   transition: transform .25s cubic-bezier(.4,0,.2,1);
 }
+.drawer-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -6px;
+  width: 12px;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.drawer-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 68px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(42,110,245,.12), rgba(42,110,245,.4), rgba(42,110,245,.12));
+  opacity: .55;
+  transition: opacity var(--transition), transform var(--transition);
+}
+.drawer-resize-handle:hover::before,
+body.drawer-resizing .drawer-resize-handle::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scaleX(1.15);
+}
 .admin-drawer.hidden {
   transform: translateX(110%);
   display: flex !important; /* keep in DOM for transition */
@@ -813,6 +843,7 @@ body {
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 540px) {
+  .drawer-resize-handle { display: none; }
   .subcriteria-row { grid-template-columns: 1fr; gap: 10px; }
   .row-controls { justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
   .score-circles { gap: 6px; }
