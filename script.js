@@ -407,10 +407,33 @@ function renderAdminList() {
   criteriaList.forEach(criteria => {
     const card = document.createElement("div");
     card.className = "admin-card";
+    card.dataset.criteriaId = criteria.id;
+    card.dataset.dragId = criteria.id;
 
     // ── Card Header (title + threshold + save/delete) ──────
     const headerEl = document.createElement("div");
     headerEl.className = "admin-card-header";
+    const topRow = document.createElement("div");
+    topRow.className = "admin-card-top-row";
+
+    const dragHandle = document.createElement("button");
+    dragHandle.className = "drag-handle";
+    dragHandle.type = "button";
+    dragHandle.draggable = true;
+    dragHandle.title = "Trascina per riordinare il criterio";
+    dragHandle.setAttribute("aria-label", "Riordina criterio");
+    dragHandle.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="9" y1="6" x2="9.01" y2="6"></line>
+        <line x1="9" y1="12" x2="9.01" y2="12"></line>
+        <line x1="9" y1="18" x2="9.01" y2="18"></line>
+        <line x1="15" y1="6" x2="15.01" y2="6"></line>
+        <line x1="15" y1="12" x2="15.01" y2="12"></line>
+        <line x1="15" y1="18" x2="15.01" y2="18"></line>
+      </svg>
+      Trascina per riordinare`;
+    topRow.appendChild(dragHandle);
+    headerEl.appendChild(topRow);
 
     const fieldsRow = document.createElement("div");
     fieldsRow.className = "admin-card-fields";
@@ -481,6 +504,23 @@ function renderAdminList() {
       localSubs.forEach((sub, idx) => {
         const row = document.createElement("div");
         row.className = "admin-sub-row";
+        row.dataset.dragId = `${criteria.id}-${idx}`;
+
+        const subDragHandle = document.createElement("button");
+        subDragHandle.className = "drag-handle drag-handle--sub";
+        subDragHandle.type = "button";
+        subDragHandle.draggable = true;
+        subDragHandle.title = "Trascina per riordinare il sotto-criterio";
+        subDragHandle.setAttribute("aria-label", `Riordina sotto-criterio ${idx + 1}`);
+        subDragHandle.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="9" y1="6" x2="9.01" y2="6"></line>
+            <line x1="9" y1="12" x2="9.01" y2="12"></line>
+            <line x1="9" y1="18" x2="9.01" y2="18"></line>
+            <line x1="15" y1="6" x2="15.01" y2="6"></line>
+            <line x1="15" y1="12" x2="15.01" y2="12"></line>
+            <line x1="15" y1="18" x2="15.01" y2="18"></line>
+          </svg>`;
 
         const input = document.createElement("input");
         input.type  = "text";
@@ -499,6 +539,7 @@ function renderAdminList() {
           rebuildSubRows();
         });
 
+        row.appendChild(subDragHandle);
         row.appendChild(input);
         row.appendChild(removeBtn);
         subList.appendChild(row);
@@ -506,6 +547,18 @@ function renderAdminList() {
     }
 
     rebuildSubRows();
+
+    setupSortable(subList, ".admin-sub-row", async () => {
+      const rows = [...subList.querySelectorAll(".admin-sub-row")];
+      const orderedIds = rows.map(row => row.dataset.dragId);
+      const currentIds = localSubs.map((_, idx) => `${criteria.id}-${idx}`);
+
+      if (orderedIds.join("|") === currentIds.join("|")) return;
+
+      localSubs = rows.map(row => row.querySelector("input")?.value ?? "");
+      rebuildSubRows();
+      showInlineMsg(msgEl, "Ordine sotto-criteri aggiornato. Premi Salva", "ok");
+    });
 
     const addSubBtn = document.createElement("button");
     addSubBtn.className = "btn-add-sub";
@@ -551,9 +604,27 @@ function renderAdminList() {
     });
 
     deleteBtn.addEventListener("click", () => deleteCriteria(criteria.id, card));
-
-    card.appendChild(subSection);
     elAdminList.appendChild(card);
+  });
+
+  setupSortable(elAdminList, ".admin-card", async () => {
+    const orderedIds = [...elAdminList.querySelectorAll(".admin-card")]
+      .map(card => card.dataset.criteriaId)
+      .filter(Boolean);
+
+    const currentOrder = criteriaList.map(criteria => criteria.id);
+    if (orderedIds.join("|") === currentOrder.join("|")) return;
+
+    const byId = new Map(criteriaList.map(criteria => [criteria.id, criteria]));
+    criteriaList = orderedIds.map(id => byId.get(id)).filter(Boolean);
+
+    try {
+      await persistCriteriaOrder();
+      renderEvaluator(criteriaList);
+      updateBadges();
+    } catch (err) {
+      alert("Riordino criteri non riuscito: " + err.message);
+    }
   });
 }
 
@@ -871,6 +942,72 @@ async function downloadPdf() {
     elBtnDownloadPdf.disabled = false;
     elBtnDownloadPdf.innerHTML = originalLabel;
   }
+}
+
+async function persistCriteriaOrder() {
+  const batch = writeBatch(db);
+
+  criteriaList.forEach((criteria, index) => {
+    criteria.order = index;
+    batch.update(doc(db, "criteria", criteria.id), { order: index });
+  });
+
+  await batch.commit();
+}
+
+function setupSortable(container, itemSelector, onReorder) {
+  const state = container._sortableState || { draggedItem: null, initialOrder: "" };
+  state.itemSelector = itemSelector;
+  state.onReorder = onReorder;
+
+  if (container._sortableState) return;
+  container._sortableState = state;
+
+  container.addEventListener("dragstart", (event) => {
+    const handle = event.target.closest(".drag-handle");
+    const item = event.target.closest(state.itemSelector);
+    if (!handle || !item) return;
+
+    state.draggedItem = item;
+    state.initialOrder = [...container.querySelectorAll(state.itemSelector)]
+      .map(entry => entry.dataset.dragId || "")
+      .join("|");
+    item.classList.add("is-dragging");
+    container.classList.add("is-sorting");
+
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", item.dataset.dragId || "");
+    }
+  });
+
+  container.addEventListener("dragover", (event) => {
+    if (!state.draggedItem) return;
+    event.preventDefault();
+
+    const target = event.target.closest(state.itemSelector);
+    if (!target || target === state.draggedItem || target.parentElement !== container) return;
+
+    const rect = target.getBoundingClientRect();
+    const insertBefore = event.clientY < rect.top + rect.height / 2;
+    container.insertBefore(state.draggedItem, insertBefore ? target : target.nextElementSibling);
+  });
+
+  container.addEventListener("dragend", async () => {
+    if (!state.draggedItem) return;
+
+    const finalOrder = [...container.querySelectorAll(state.itemSelector)]
+      .map(entry => entry.dataset.dragId || "")
+      .join("|");
+
+    state.draggedItem.classList.remove("is-dragging");
+    container.classList.remove("is-sorting");
+    state.draggedItem = null;
+    if (finalOrder !== state.initialOrder) {
+      await state.onReorder();
+    }
+    state.initialOrder = "";
+  });
 }
 
 function createPdfExportRoot() {

@@ -389,6 +389,10 @@ body {
   flex-direction: column;
   gap: 10px;
 }
+.admin-card-top-row {
+  display: flex;
+  justify-content: flex-start;
+}
 .admin-card-fields {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -438,6 +442,43 @@ body {
 }
 .inline-msg.ok   { color: var(--pass-color); background: var(--pass-bg); }
 .inline-msg.err  { color: var(--fail-color); background: var(--fail-bg); }
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-size: .72rem;
+  font-family: var(--font-main);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: all var(--transition);
+}
+.drag-handle:hover {
+  color: var(--text-secondary);
+  border-color: #c5c2ba;
+  background: rgba(42,110,245,.04);
+}
+.drag-handle:active { cursor: grabbing; }
+.drag-handle--sub {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.is-sorting .drag-handle { cursor: grabbing; }
+.admin-card.is-dragging,
+.admin-sub-row.is-dragging {
+  opacity: .65;
+}
 
 /* Settings row: input + save side by side */
 .settings-row {
@@ -506,6 +547,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 2px 0;
 }
 .admin-sub-row .field { font-size: .85rem; padding: 7px 10px; }
 .btn-remove-sub {
