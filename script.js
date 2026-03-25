@@ -945,10 +945,9 @@ function onCommentInput(e) {
 }
 
 async function downloadPdf() {
-  const html2canvasLib = window.html2canvas;
   const jsPdfCtor = window.jspdf?.jsPDF;
 
-  if (!html2canvasLib || !jsPdfCtor) {
+  if (!jsPdfCtor) {
     alert("Generazione PDF non disponibile.");
     return;
   }
@@ -960,56 +959,441 @@ async function downloadPdf() {
     Generazione PDF...`;
 
   try {
-    const exportRoot = createPdfExportRoot();
-    document.body.appendChild(exportRoot);
-
-    await new Promise(resolve => requestAnimationFrame(() => resolve()));
-
-    const canvas = await html2canvasLib(exportRoot, {
-      scale: Math.min(window.devicePixelRatio || 1, 1.5),
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      width: exportRoot.scrollWidth,
-      height: exportRoot.scrollHeight,
-      windowWidth: exportRoot.scrollWidth,
-      windowHeight: exportRoot.scrollHeight,
-      ignoreElements: (element) => {
-        if (!(element instanceof HTMLElement)) return false;
-        return element.classList.contains("hidden") || element.classList.contains("no-print");
-      },
-    });
-
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPdfCtor("p", "mm", "a4");
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-      heightLeft -= pageHeight;
-    }
-
-    pdf.save("valutazione.pdf");
+    buildEvaluationPdf(jsPdfCtor);
   } catch (err) {
     console.error("PDF generation error:", err);
     alert("Generazione PDF non riuscita.");
   } finally {
-    document.querySelector(".pdf-export-root")?.remove();
     elBtnDownloadPdf.disabled = false;
     elBtnDownloadPdf.innerHTML = originalLabel;
   }
+}
+
+function buildEvaluationPdf(jsPdfCtor) {
+  const pdf = new jsPdfCtor({
+    orientation: "p",
+    unit: "pt",
+    format: "a4",
+    compress: true,
+    putOnlyUsedFonts: true,
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const marginX = 42;
+  const topMargin = 46;
+  const bottomMargin = 42;
+  const contentWidth = pageWidth - (marginX * 2) - 12;
+  const bottomY = pageHeight - bottomMargin;
+  const lineGap = 5;
+  const sectionGap = 18;
+  let y = topMargin;
+
+  const ensureSpace = (heightNeeded, repeatHeader) => {
+    if (y + heightNeeded <= bottomY) return;
+    pdf.addPage();
+    y = topMargin;
+    if (typeof repeatHeader === "function") {
+      y = repeatHeader(y);
+    }
+  };
+
+  const drawWrappedText = (text, x, startY, maxWidth, options = {}) => {
+    const value = String(text ?? "");
+    const lines = pdf.splitTextToSize(value, maxWidth);
+    const fontSize = options.fontSize ?? 11;
+    const lineHeight = options.lineHeight ?? (fontSize * 1.35);
+
+    pdf.setFont(options.font || "helvetica", options.fontStyle || "normal");
+    pdf.setFontSize(fontSize);
+    pdf.setTextColor(...(options.color || [26, 25, 23]));
+    pdf.text(lines, x, startY);
+
+    return {
+      lines,
+      height: Math.max(lineHeight, lines.length * lineHeight),
+      lineHeight,
+    };
+  };
+
+  const measureWrappedText = (text, maxWidth, options = {}) => {
+    const value = String(text ?? "");
+    const lines = pdf.splitTextToSize(value, maxWidth);
+    const fontSize = options.fontSize ?? 11;
+    const lineHeight = options.lineHeight ?? (fontSize * 1.35);
+    return {
+      lines,
+      height: Math.max(lineHeight, lines.length * lineHeight),
+      lineHeight,
+    };
+  };
+
+  const drawDivider = (posY) => {
+    pdf.setDrawColor(226, 224, 218);
+    pdf.setLineWidth(1);
+    pdf.line(marginX, posY, pageWidth - marginX, posY);
+  };
+
+  const overallSummary = getPdfOverallSummary();
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(22);
+  pdf.setTextColor(26, 25, 23);
+  pdf.text("Valutazione", marginX, y);
+  y += 24;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(112, 110, 104);
+  pdf.text(`Generato il ${new Date().toLocaleString("it-IT")}`, marginX, y);
+  y += 20;
+
+  const overallText = `Risultato complessivo: ${overallSummary.label}`;
+  const overallMeta = overallSummary.hasMissingComments
+    ? "Sono presenti commenti obbligatori mancanti."
+    : "Tutti i criteri sono stati elaborati correttamente.";
+
+  const overallBlockHeight =
+    measureWrappedText(overallText, contentWidth, { fontSize: 13, lineHeight: 17 }).height +
+    measureWrappedText(overallMeta, contentWidth, { fontSize: 10, lineHeight: 14 }).height +
+    18;
+
+  ensureSpace(overallBlockHeight);
+  drawWrappedText(overallText, marginX, y, contentWidth, {
+    fontSize: 13,
+    lineHeight: 17,
+    fontStyle: "bold",
+    color: overallSummary.pass ? [26, 122, 74] : [179, 45, 45],
+  });
+  y += 18;
+  drawWrappedText(overallMeta, marginX, y, contentWidth, {
+    fontSize: 10,
+    lineHeight: 14,
+    color: [112, 110, 104],
+  });
+  y += 22;
+  drawDivider(y);
+  y += sectionGap;
+
+  criteriaList.forEach((criteria, criteriaIndex) => {
+    const criterionSummary = getPdfCriterionSummary(criteria);
+    const headerHeight = getPdfCriterionHeaderHeight(pdf, criteria, criterionSummary, contentWidth);
+    const firstRow = (criteria.subCriteria || [])[0];
+    const firstRowHeight = firstRow
+      ? getPdfRowHeight(pdf, criteria, 0, firstRow, contentWidth)
+      : 0;
+
+    ensureSpace(headerHeight + firstRowHeight + 8);
+    y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
+
+    (criteria.subCriteria || []).forEach((subCriteriaText, subIdx) => {
+      const rowHeight = getPdfRowHeight(pdf, criteria, subIdx, subCriteriaText, contentWidth);
+      ensureSpace(rowHeight + 6, (nextY) =>
+        drawPdfCriterionContinuationHeader(pdf, criteria, marginX, nextY, contentWidth)
+      );
+      y = drawPdfSubCriteriaRow(pdf, criteria, subIdx, subCriteriaText, marginX, y, contentWidth);
+    });
+
+    if (criteriaIndex < criteriaList.length - 1) {
+      y += 4;
+      drawDivider(y);
+      y += sectionGap;
+    }
+  });
+
+  pdf.save("valutazione.pdf");
+}
+
+function getPdfCriterionSummary(criteria) {
+  const avg = averageScore(criteria.id, criteria.subCriteria.length);
+  const rows = scores[criteria.id] || {};
+  const anyBelowMin = subCriteriaMinThreshold > 0 &&
+    Object.values(rows).some(entry => {
+      const value = entry?.score ?? 0;
+      return value > 0 && value < subCriteriaMinThreshold;
+    });
+  const pass = avg !== null && !anyBelowMin && avg >= criteria.threshold;
+
+  return {
+    avg,
+    pass,
+    anyBelowMin,
+    label: avg === null ? "In sospeso" : (pass ? "Superato" : "Non Superato"),
+  };
+}
+
+function getPdfOverallSummary() {
+  if (criteriaList.length === 0) {
+    return { label: "In sospeso", pass: false, hasMissingComments: false };
+  }
+
+  const summaries = criteriaList.map(getPdfCriterionSummary);
+  const hasPending = summaries.some(summary => summary.avg === null);
+  const hasFailure = summaries.some(summary => summary.avg !== null && !summary.pass);
+  const hasMissingComments = checkMissingComments();
+
+  if (hasPending) {
+    return { label: "In sospeso", pass: false, hasMissingComments };
+  }
+
+  return {
+    label: hasFailure ? "Non Superato" : "Superato",
+    pass: !hasFailure,
+    hasMissingComments,
+  };
+}
+
+function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
+  const titleHeight = measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
+  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.avg)}    Stato: ${summary.label}`;
+  const metaHeight = measurePdfTextHeight(pdf, metaText, width, 10, 14);
+  const noteHeight = summary.anyBelowMin
+    ? measurePdfTextHeight(
+      pdf,
+      `Almeno un sotto-criterio e sotto il minimo (${subCriteriaMinThreshold}).`,
+      width,
+      9,
+      13
+    )
+    : 0;
+  return titleHeight + metaHeight + noteHeight + 18;
+}
+
+function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
+  drawWrappedPdfText(pdf, criteria.title, x, startY, width, {
+    fontSize: 15,
+    lineHeight: 18,
+    fontStyle: "bold",
+  });
+  let y = startY + measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
+
+  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.avg)}    Stato: ${summary.label}`;
+  drawWrappedPdfText(pdf, metaText, x, y, width, {
+    fontSize: 10,
+    lineHeight: 14,
+    color: [112, 110, 104],
+  });
+  y += measurePdfTextHeight(pdf, metaText, width, 10, 14);
+
+  if (summary.anyBelowMin) {
+    const noteText = `Almeno un sotto-criterio e sotto il minimo (${subCriteriaMinThreshold}).`;
+    drawWrappedPdfText(pdf, noteText, x, y, width, {
+      fontSize: 9,
+      lineHeight: 13,
+      color: [179, 45, 45],
+    });
+    y += measurePdfTextHeight(pdf, noteText, width, 9, 13);
+  }
+
+  return y + 10;
+}
+
+function drawPdfCriterionContinuationHeader(pdf, criteria, x, startY, width) {
+  const label = `${criteria.title} (continua)`;
+  drawWrappedPdfText(pdf, label, x, startY, width, {
+    fontSize: 11,
+    lineHeight: 14,
+    fontStyle: "bold",
+    color: [112, 110, 104],
+  });
+  return startY + measurePdfTextHeight(pdf, label, width, 11, 14, "bold") + 8;
+}
+
+function getPdfRowHeight(pdf, criteria, subIdx, subCriteriaText, width) {
+  const entry = ensureScoreEntry(criteria.id, subIdx);
+  const noteLines = getPdfRowNotes(entry.score, entry.comment);
+  const titleHeight = measurePdfTextHeight(pdf, `${subIdx + 1}. ${subCriteriaText}`, width, 11, 15, "bold");
+  const scoreHeight = measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
+  const notesHeight = noteLines.length
+    ? measurePdfTextHeight(pdf, noteLines.join("  |  "), width, 9, 12)
+    : 0;
+  const commentTitleHeight = 12;
+  const commentHeight = measurePdfTextHeight(
+    pdf,
+    getPdfCommentLabel(entry.comment),
+    width,
+    10,
+    14,
+    entry.comment.trim() ? "normal" : "italic"
+  );
+
+  return titleHeight + scoreHeight + notesHeight + commentTitleHeight + commentHeight + 18;
+}
+
+function drawPdfSubCriteriaRow(pdf, criteria, subIdx, subCriteriaText, x, startY, width) {
+  const entry = ensureScoreEntry(criteria.id, subIdx);
+  let y = startY;
+
+  const title = `${subIdx + 1}. ${subCriteriaText}`;
+  drawWrappedPdfText(pdf, title, x, y, width, {
+    fontSize: 11,
+    lineHeight: 15,
+    fontStyle: "bold",
+  });
+  y += measurePdfTextHeight(pdf, title, width, 11, 15, "bold");
+
+  drawWrappedPdfText(pdf, getPdfScoreLabel(entry.score), x, y, width, {
+    fontSize: 10,
+    lineHeight: 13,
+    color: [87, 83, 78],
+  });
+  y += measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
+
+  const notes = getPdfRowNotes(entry.score, entry.comment);
+  if (notes.length) {
+    const notesText = notes.join("  |  ");
+    drawWrappedPdfText(pdf, notesText, x, y, width, {
+      fontSize: 9,
+      lineHeight: 12,
+      color: [168, 90, 0],
+    });
+    y += measurePdfTextHeight(pdf, notesText, width, 9, 12);
+  }
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(9);
+  pdf.setTextColor(112, 110, 104);
+  pdf.text("Commento", x, y);
+  y += 12;
+
+  drawWrappedPdfText(pdf, getPdfCommentLabel(entry.comment), x, y, width, {
+    fontSize: 10,
+    lineHeight: 14,
+    color: entry.comment.trim() ? [26, 25, 23] : [112, 110, 104],
+    fontStyle: entry.comment.trim() ? "normal" : "italic",
+  });
+  y += measurePdfTextHeight(
+    pdf,
+    getPdfCommentLabel(entry.comment),
+    width,
+    10,
+    14,
+    entry.comment.trim() ? "normal" : "italic"
+  );
+  y += 6;
+
+  pdf.setDrawColor(236, 233, 227);
+  pdf.line(x, y, x + width, y);
+  return y + 12;
+}
+
+function drawWrappedPdfText(pdf, text, x, y, width, options = {}) {
+  const fontStyle = options.fontStyle || "normal";
+  const fontSize = options.fontSize || 11;
+  const lines = splitPdfTextToWidth(pdf, String(text ?? ""), width, fontSize, fontStyle);
+
+  pdf.setFont("helvetica", fontStyle);
+  pdf.setFontSize(fontSize);
+  pdf.setTextColor(...(options.color || [26, 25, 23]));
+  pdf.text(lines, x, y);
+}
+
+function measurePdfTextHeight(pdf, text, width, fontSize, lineHeight, fontStyle = "normal") {
+  const lines = splitPdfTextToWidth(pdf, String(text ?? ""), width, fontSize, fontStyle);
+  return Math.max(lineHeight, lines.length * lineHeight);
+}
+
+function splitPdfTextToWidth(pdf, text, width, fontSize, fontStyle = "normal") {
+  const value = String(text ?? "").replace(/\r\n/g, "\n");
+
+  pdf.setFont("helvetica", fontStyle);
+  pdf.setFontSize(fontSize);
+
+  const paragraphs = value.split("\n");
+  const lines = [];
+
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    if (!paragraph.trim()) {
+      lines.push("");
+      return;
+    }
+
+    const words = paragraph.split(/\s+/);
+    let currentLine = "";
+
+    words.forEach((word) => {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      if (pdf.getTextWidth(candidate) <= width) {
+        currentLine = candidate;
+        return;
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+        currentLine = "";
+      }
+
+      if (pdf.getTextWidth(word) <= width) {
+        currentLine = word;
+        return;
+      }
+
+      const chunks = splitLongPdfWord(pdf, word, width);
+      chunks.forEach((chunk, chunkIndex) => {
+        if (chunkIndex < chunks.length - 1) {
+          lines.push(chunk);
+        } else {
+          currentLine = chunk;
+        }
+      });
+    });
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    if (paragraphIndex < paragraphs.length - 1) {
+      lines.push("");
+    }
+  });
+
+  return lines.length ? lines : [""];
+}
+
+function splitLongPdfWord(pdf, word, width) {
+  const chunks = [];
+  let current = "";
+
+  for (const char of word) {
+    const candidate = current + char;
+    if (current && pdf.getTextWidth(candidate) > width) {
+      chunks.push(current);
+      current = char;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks.length ? chunks : [word];
+}
+
+function formatPdfAverage(avg) {
+  if (avg === null || Number.isNaN(avg)) return "-";
+  return avg.toFixed(2).replace(".", ",");
+}
+
+function getPdfScoreLabel(score) {
+  if (!score) return "Punteggio: Non valutato";
+  return `Punteggio: ${score}/5`;
+}
+
+function getPdfCommentLabel(comment) {
+  return comment.trim() || "Nessun commento.";
+}
+
+function getPdfRowNotes(score, comment) {
+  const notes = [];
+  if (subCriteriaMinThreshold > 0 && score > 0 && score < subCriteriaMinThreshold) {
+    notes.push(`Sotto il minimo (${subCriteriaMinThreshold})`);
+  }
+  if (isCommentRequired(score)) {
+    notes.push(comment.trim() ? "Commento obbligatorio presente" : "Commento obbligatorio mancante");
+  }
+  return notes;
 }
 
 async function persistCriteriaOrder() {
@@ -1076,85 +1460,6 @@ function setupSortable(container, itemSelector, onReorder) {
     }
     state.initialOrder = "";
   });
-}
-
-function createPdfExportRoot() {
-  const exportRoot = document.createElement("div");
-  const exportStyles = document.createElement("style");
-  const headerClone = elSiteHeader?.cloneNode(true);
-  const mainClone = elMainContent?.cloneNode(true);
-  const exportWidth = Math.max(
-    elMainContent?.scrollWidth || 0,
-    elMainContent?.clientWidth || 0,
-    900
-  );
-
-  exportRoot.className = "pdf-export-root";
-  exportRoot.style.position = "fixed";
-  exportRoot.style.left = "-20000px";
-  exportRoot.style.top = "0";
-  exportRoot.style.width = `${exportWidth}px`;
-  exportRoot.style.background = "#ffffff";
-  exportRoot.style.zIndex = "-1";
-
-  exportStyles.textContent = `
-    .pdf-export-root,
-    .pdf-export-root * {
-      animation: none !important;
-      transition: none !important;
-    }
-
-    .pdf-export-root .site-header {
-      position: static !important;
-      background: #ffffff !important;
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-      border-bottom: 1px solid #e2e0da !important;
-    }
-
-    .pdf-export-root .header-inner,
-    .pdf-export-root .main-content {
-      max-width: none !important;
-      width: 100% !important;
-    }
-
-    .pdf-export-root .main-content {
-      padding-top: 24px !important;
-      padding-bottom: 48px !important;
-      background: #ffffff !important;
-    }
-
-    .pdf-export-root .criteria-card,
-    .pdf-export-root .overall-result {
-      box-shadow: none !important;
-      border: 1px solid #e2e0da !important;
-    }
-
-    .pdf-export-root .circle.filled::after {
-      background: rgba(255, 255, 255, 0.14) !important;
-    }
-
-    .pdf-export-root .modal,
-    .pdf-export-root .modal-backdrop,
-    .pdf-export-root .drawer-backdrop,
-    .pdf-export-root .admin-drawer,
-    .pdf-export-root .header-actions,
-    .pdf-export-root .no-print {
-      display: none !important;
-    }
-  `;
-
-  if (headerClone instanceof HTMLElement) {
-    headerClone.querySelector(".header-actions")?.remove();
-    exportRoot.appendChild(headerClone);
-  }
-
-  if (mainClone instanceof HTMLElement) {
-    exportRoot.appendChild(mainClone);
-  }
-
-  exportRoot.prepend(exportStyles);
-  return exportRoot;
 }
 
 // ─────────────────────────────────────────────────────────────

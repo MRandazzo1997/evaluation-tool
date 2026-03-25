@@ -860,7 +860,18 @@ body.drawer-resizing .drawer-resize-handle::before {
   .no-print, .site-header .header-actions, #btn-admin-panel { display: none !important; }
   .site-header { position: static; backdrop-filter: none; border-bottom: 1px solid #ccc; }
   body { background: #fff; }
-  .criteria-card, .overall-result { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; break-inside: avoid; }
+  .criteria-card, .overall-result { box-shadow: none; border: 1px solid #ccc; }
+  .card-header {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+    page-break-after: avoid;
+    break-after: avoid-page;
+  }
+  .subcriteria-row,
+  .overall-result {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
   .circle.filled { background: #2a6ef5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .badge.pass { background: #e8f5ee !important; color: #1a7a4a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .badge.fail { background: #fdeaea !important; color: #b32d2d !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
