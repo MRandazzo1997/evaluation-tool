@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EvalKit</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
 </head>
+
 <body>
 
   <!-- Header -->
@@ -19,26 +23,74 @@
       </div>
       <div class="header-actions">
         <a href="user-guide.pdf" download class="btn-guide no-print" title="Scarica la guida utente">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg>
           Guida Utente
         </a>
-        <a id="link-admin-guide" href="admin-guide.pdf" download class="btn-guide admin-only hidden no-print" title="Scarica la guida amministratore">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        <a id="link-admin-guide" href="admin-guide.pdf" download class="btn-guide admin-only hidden no-print"
+          title="Scarica la guida amministratore">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg>
           Guida Admin
         </a>
         <button id="btn-admin-panel" class="btn-ghost admin-only hidden no-print" aria-expanded="false">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
           Pannello Admin
         </button>
+        <button id="btn-download-json" class="btn-ghost no-print" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Scarica JSON
+        </button>
+        <button id="btn-upload-json" class="btn-ghost no-print" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 14 12 9 17 14" />
+            <line x1="12" y1="5" x2="12" y2="15" />
+          </svg>
+          Carica JSON
+        </button>
         <button id="btn-download-pdf" class="btn-ghost no-print" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
           Scarica PDF
         </button>
         <button id="btn-login" class="btn-primary auth-logged-out no-print">Accedi</button>
+        <input id="json-file-input" type="file" accept=".json,application/json" class="hidden" />
         <div id="user-info" class="user-info auth-logged-in hidden no-print">
           <span id="user-email" class="user-email"></span>
           <button id="btn-logout" class="btn-ghost btn--danger">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
             Esci
           </button>
         </div>
@@ -49,49 +101,55 @@
   <!-- Admin Drawer -->
   <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
   <aside id="admin-drawer" class="admin-drawer admin-only hidden" aria-label="Pannello Admin">
-    <button id="drawer-resize-handle" class="drawer-resize-handle" type="button" aria-label="Ridimensiona pannello admin" title="Ridimensiona pannello admin"></button>
+    <button id="drawer-resize-handle" class="drawer-resize-handle" type="button"
+      aria-label="Ridimensiona pannello admin" title="Ridimensiona pannello admin"></button>
     <div class="drawer-inner">
 
       <div class="drawer-header">
         <h2 class="drawer-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
           Pannello Admin
         </h2>
         <button id="btn-close-drawer" class="btn-icon" aria-label="Chiudi pannello">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
 
       <section class="drawer-section">
-        <h3 class="section-label">Impostazioni Globali</h3>
-        <div class="add-form">
-          <label class="field-label" for="setting-min-threshold">Punteggio minimo per sotto-criterio:</label>
-          <div class="settings-row">
-            <input id="setting-min-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
-          </div>
-          <p class="field-hint">Qualsiasi sotto-criterio minore di questo punteggio non farà passare il criterio.</p>
-
-          <label class="field-label" for="setting-warn-threshold">Commento obbligatorio se punteggio minore o uguale a:</label>
-          <div class="settings-row">
-            <input id="setting-warn-threshold" type="number" class="field" placeholder="0" step="0.1" min="0" max="5" />
-          </div>
-          <p class="field-hint">I sotto-criteri sotto questo punteggio mostreranno un promemoria per il commento. Non influisce su Superato/Non Superato.</p>
-
-          <button id="btn-save-settings" class="btn-primary btn--full">Salva Impostazioni</button>
-          <span id="settings-msg" class="inline-msg hidden"></span>
-        </div>
-      </section>
-
-      <div class="drawer-divider"></div>
-
-      <section class="drawer-section">
         <h3 class="section-label">Aggiungi Nuovo Criterio</h3>
         <div class="add-form">
-          <input id="new-title" type="text" class="field" placeholder="Titolo criterio" />
-          <input id="new-threshold" type="number" class="field field--sm" placeholder="Soglia (1-5)" step="0.1" min="0" max="5" />
+          <div class="form-field-group">
+            <label class="field-label" for="new-type">Tipo Criterio</label>
+            <select id="new-type" class="field">
+              <option value="normal">Criterio Normale (con sotto-criteri)</option>
+              <option value="yesno">Criterio Sì/No (domanda singola)</option>
+            </select>
+          </div>
+          <div class="form-field-group">
+            <label class="field-label" for="new-title">Titolo</label>
+            <input id="new-title" type="text" class="field" placeholder="Es. Eccellenza Scientifica" />
+          </div>
+          <div class="form-field-group">
+            <label class="field-label" for="new-threshold">Soglia (1-5)</label>
+            <input id="new-threshold" type="number" class="field" placeholder="Es. 3.5" step="0.1" min="0" max="5" />
+          </div>
           <p id="add-error" class="form-error hidden"></p>
           <button id="btn-add-criteria" class="btn-primary btn--full">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
             Aggiungi Criterio
           </button>
         </div>
@@ -119,7 +177,11 @@
           <h2 id="modal-title" class="modal-title">Accesso Admin</h2>
         </div>
         <button id="btn-close-modal" class="btn-icon" aria-label="Chiudi">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
       <p class="modal-subtitle">Accedi per gestire i criteri di valutazione.</p>
@@ -127,7 +189,8 @@
         <label class="field-label" for="login-email">Email</label>
         <input id="login-email" type="email" class="field" placeholder="you@example.com" autocomplete="email" />
         <label class="field-label" for="login-password">Password</label>
-        <input id="login-password" type="password" class="field" placeholder="........" autocomplete="current-password" />
+        <input id="login-password" type="password" class="field" placeholder="........"
+          autocomplete="current-password" />
         <p id="login-error" class="form-error hidden"></p>
         <button id="btn-submit-login" class="btn-primary btn--full">Accedi</button>
       </div>
@@ -159,4 +222,5 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script type="module" src="script.js"></script>
 </body>
+
 </html>

@@ -27,8 +27,8 @@ const firebaseConfig = {
 // ─────────────────────────────────────────────────────────────
 // Init
 // ─────────────────────────────────────────────────────────────
-const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const auth = getAuth(app);
 
 // ─────────────────────────────────────────────────────────────
@@ -36,11 +36,9 @@ const auth = getAuth(app);
 // ─────────────────────────────────────────────────────────────
 const scores = {};          // scores[criteriaId][subIndex] = { score: 0-5, comment: string }
 let criteriaList = [];      // cached from Firestore
-let currentUser  = null;    // Firebase User | null
-let drawerOpen   = false;
+let currentUser = null;    // Firebase User | null
+let drawerOpen = false;
 let drawerResizeCleanup = null;
-let subCriteriaMinThreshold     = 0; // loaded from settings/config
-let subCriteriaWarningThreshold = 0; // loaded from settings/config
 const DRAWER_WIDTH_KEY = "evalkit-admin-drawer-width";
 const DRAWER_MIN_WIDTH = 360;
 const DRAWER_MAX_WIDTH = 900;
@@ -50,41 +48,45 @@ const DRAWER_MAX_WIDTH = 900;
 // ─────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
-const elBtnLogin        = $("btn-login");
-const elBtnLogout       = $("btn-logout");
-const elBtnAdminPanel   = $("btn-admin-panel");
-const elBtnDownloadPdf  = $("btn-download-pdf");
-const elUserInfo        = $("user-info");
-const elUserEmail       = $("user-email");
+const elBtnLogin = $("btn-login");
+const elBtnLogout = $("btn-logout");
+const elBtnAdminPanel = $("btn-admin-panel");
+const elBtnDownloadPdf = $("btn-download-pdf");
+const elBtnDownloadJson = $("btn-download-json");
+const elBtnUploadJson = $("btn-upload-json");
+const elJsonFileInput = $("json-file-input");
+const elUserInfo = $("user-info");
+const elUserEmail = $("user-email");
 
-const elLoginModal      = $("login-modal");
-const elModalBackdrop   = $("modal-backdrop");
-const elBtnCloseModal   = $("btn-close-modal");
-const elBtnSubmitLogin  = $("btn-submit-login");
-const elLoginEmail      = $("login-email");
-const elLoginPassword   = $("login-password");
-const elLoginError      = $("login-error");
+const elLoginModal = $("login-modal");
+const elModalBackdrop = $("modal-backdrop");
+const elBtnCloseModal = $("btn-close-modal");
+const elBtnSubmitLogin = $("btn-submit-login");
+const elLoginEmail = $("login-email");
+const elLoginPassword = $("login-password");
+const elLoginError = $("login-error");
 
-const elDrawer          = $("admin-drawer");
-const elDrawerBackdrop  = $("drawer-backdrop");
-const elBtnCloseDrawer  = $("btn-close-drawer");
+const elDrawer = $("admin-drawer");
+const elDrawerBackdrop = $("drawer-backdrop");
+const elBtnCloseDrawer = $("btn-close-drawer");
 const elDrawerResizeHandle = $("drawer-resize-handle");
 
-const elNewTitle        = $("new-title");
-const elNewThreshold    = $("new-threshold");
-const elBtnAddCriteria  = $("btn-add-criteria");
-const elAddError        = $("add-error");
-const elAdminList       = $("admin-list");
+const elNewTitle = $("new-title");
+const elNewType = $("new-type");
+const elNewThreshold = $("new-threshold");
+const elBtnAddCriteria = $("btn-add-criteria");
+const elAddError = $("add-error");
+const elAdminList = $("admin-list");
 
-const elStateLoading    = $("state-loading");
-const elStateError      = $("state-error");
-const elStateEmpty      = $("state-empty");
-const elErrorMessage    = $("error-message");
+const elStateLoading = $("state-loading");
+const elStateError = $("state-error");
+const elStateEmpty = $("state-empty");
+const elErrorMessage = $("error-message");
 const elCriteriaContainer = $("criteria-container");
-const elOverallResult   = $("overall-result");
-const elOverallBadge    = $("overall-badge");
-const elSiteHeader      = document.querySelector(".site-header");
-const elMainContent     = document.querySelector(".main-content");
+const elOverallResult = $("overall-result");
+const elOverallBadge = $("overall-badge");
+const elSiteHeader = document.querySelector(".site-header");
+const elMainContent = document.querySelector(".main-content");
 
 // ─────────────────────────────────────────────────────────────
 // Auth UI
@@ -135,7 +137,7 @@ function hideError(el) {
 }
 
 async function handleLogin() {
-  const email    = elLoginEmail.value.trim();
+  const email = elLoginEmail.value.trim();
   const password = elLoginPassword.value;
 
   if (!email || !password) {
@@ -160,11 +162,11 @@ async function handleLogin() {
 
 function friendlyAuthError(code) {
   const map = {
-    "auth/user-not-found":      "Nessun account trovato con questa email.",
-    "auth/wrong-password":      "Password non corretta.",
-    "auth/invalid-email":       "Inserisci un indirizzo email valido.",
-    "auth/too-many-requests":   "Troppi tentativi. Riprova più tardi.",
-    "auth/invalid-credential":  "Email o password non valide.",
+    "auth/user-not-found": "Nessun account trovato con questa email.",
+    "auth/wrong-password": "Password non corretta.",
+    "auth/invalid-email": "Inserisci un indirizzo email valido.",
+    "auth/too-many-requests": "Troppi tentativi. Riprova più tardi.",
+    "auth/invalid-credential": "Email o password non valide.",
   };
   return map[code] || "Accesso non riuscito. Controlla le credenziali.";
 }
@@ -264,14 +266,34 @@ async function loadCriteria() {
   showState("loading");
 
   try {
-    const q        = query(collection(db, "criteria"), orderBy("order"));
+    const q = query(collection(db, "criteria"), orderBy("order"));
     const snapshot = await getDocs(q);
 
-    criteriaList = snapshot.docs.map(d => ({
-      id: d.id,
-      ...d.data(),
-      subCriteria: d.data().subCriteria || [],
-    }));
+    criteriaList = snapshot.docs.map(d => {
+      const data = d.data();
+      const type = data.type || "normal";
+
+      let normalizedSubCriteria = [];
+      if (type === "normal") {
+        const rawSubCriteria = data.subCriteria || [];
+        normalizedSubCriteria = rawSubCriteria.map(sub => {
+          if (typeof sub === 'string') {
+            return { text: sub, minThreshold: 0 };
+          }
+          return {
+            text: sub.text || '',
+            minThreshold: sub.minThreshold ?? 0,
+          };
+        });
+      }
+
+      return {
+        id: d.id,
+        ...data,
+        type,
+        subCriteria: normalizedSubCriteria,
+      };
+    });
 
     if (criteriaList.length === 0) {
       showState("empty");
@@ -297,83 +319,12 @@ async function loadCriteria() {
 // Firestore: Settings
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Loads settings/config from Firestore.
- * Falls back to 0 if the document doesn't exist yet.
- */
-async function loadSettings() {
-  try {
-    const snap = await getDoc(doc(db, "settings", "config"));
-    if (snap.exists()) {
-      const data = snap.data();
+// Global settings have been removed. Per-sub-criteria thresholds are now
+// stored directly with each sub-criteria in the criteria document.
 
-      const min = data.subCriteriaMinThreshold;
-      subCriteriaMinThreshold = (typeof min === "number" && !isNaN(min)) ? min : 0;
-
-      const warn = data.subCriteriaWarningThreshold;
-      subCriteriaWarningThreshold = (typeof warn === "number" && !isNaN(warn)) ? warn : 0;
-    } else {
-      subCriteriaMinThreshold     = 0;
-      subCriteriaWarningThreshold = 0;
-    }
-    console.log("[loadSettings] min =", subCriteriaMinThreshold, "warn =", subCriteriaWarningThreshold);
-    // Sync admin inputs if the drawer is already rendered
-    const inpMin  = $("setting-min-threshold");
-    const inpWarn = $("setting-warn-threshold");
-    if (inpMin)  inpMin.value  = subCriteriaMinThreshold;
-    if (inpWarn) inpWarn.value = subCriteriaWarningThreshold;
-  } catch (err) {
-    console.warn("[loadSettings] Failed:", err.message);
-    subCriteriaMinThreshold     = 0;
-    subCriteriaWarningThreshold = 0;
-  }
-}
-
-/**
- * Persists the min-threshold value to settings/config (creates or merges).
- */
-async function saveSettings() {
-  const inpMin  = $("setting-min-threshold");
-  const inpWarn = $("setting-warn-threshold");
-  const btnSave = $("btn-save-settings");
-  const msgEl   = $("settings-msg");
-
-  const valMin  = parseFloat(inpMin.value);
-  const valWarn = parseFloat(inpWarn.value);
-
-  if (isNaN(valMin) || valMin < 0 || valMin > 5) {
-    showInlineMsg(msgEl, "Il minimo deve essere compreso tra 0 e 5", "err");
-    return;
-  }
-  if (isNaN(valWarn) || valWarn < 0 || valWarn > 5) {
-    showInlineMsg(msgEl, "La soglia di avviso deve essere compresa tra 0 e 5", "err");
-    return;
-  }
-
-  btnSave.disabled = true;
-  btnSave.textContent = "Salvataggio...";
-
-  try {
-    await setDoc(doc(db, "settings", "config"), {
-      subCriteriaMinThreshold:     valMin,
-      subCriteriaWarningThreshold: valWarn,
-    }, { merge: true });
-
-    subCriteriaMinThreshold     = valMin;
-    subCriteriaWarningThreshold = valWarn;
-    console.log("[saveSettings] min →", valMin, "warn →", valWarn);
-    showInlineMsg(msgEl, "Salvato", "ok");
-    // Re-evaluate immediately so badges and row indicators update
-    updateBadges();
-  } catch (err) {
-    showInlineMsg(msgEl, "Errore: " + err.message, "err");
-  } finally {
-    btnSave.disabled = false;
-    btnSave.textContent = "Salva Impostazioni";
-  }
-}
 async function addCriteria() {
-  const title     = elNewTitle.value.trim();
+  const title = elNewTitle.value.trim();
+  const type = elNewType.value; // "normal" or "yesno"
   const threshold = parseFloat(elNewThreshold.value);
 
   hideError(elAddError);
@@ -382,9 +333,13 @@ async function addCriteria() {
     showError(elAddError, "Inserisci un titolo.");
     return;
   }
-  if (isNaN(threshold) || threshold < 0 || threshold > 5) {
-    showError(elAddError, "La soglia deve essere un numero tra 0 e 5.");
-    return;
+
+  // For "normal" type, threshold is required. For "yesno", it's ignored.
+  if (type === "normal") {
+    if (isNaN(threshold) || threshold < 0 || threshold > 5) {
+      showError(elAddError, "La soglia deve essere un numero tra 0 e 5.");
+      return;
+    }
   }
 
   elBtnAddCriteria.disabled = true;
@@ -395,14 +350,22 @@ async function addCriteria() {
       ? Math.max(...criteriaList.map(c => c.order ?? 0)) + 1
       : 0;
 
-    await addDoc(collection(db, "criteria"), {
+    const newCriteria = {
       title,
-      threshold,
-      subCriteria: [],
+      type: type || "normal",
+      threshold: type === "normal" ? threshold : 0,
       order: newOrder,
-    });
+    };
 
-    elNewTitle.value     = "";
+    // Only include subCriteria for normal criteria
+    if (type === "normal") {
+      newCriteria.subCriteria = [];
+    }
+
+    await addDoc(collection(db, "criteria"), newCriteria);
+
+    elNewTitle.value = "";
+    elNewType.value = "normal";
     elNewThreshold.value = "";
     await loadCriteria();
   } catch (err) {
@@ -452,19 +415,13 @@ async function deleteCriteria(id, cardEl) {
 // ─────────────────────────────────────────────────────────────
 function showInlineMsg(el, text, type) {
   el.textContent = text;
-  el.className   = `inline-msg ${type}`;
+  el.className = `inline-msg ${type}`;
   el.classList.remove("hidden");
   clearTimeout(el._timer);
   el._timer = setTimeout(() => el.classList.add("hidden"), 2500);
 }
 
 function renderAdminList() {
-  // Keep the global-settings inputs in sync with current in-memory values
-  const settingInpMin  = $("setting-min-threshold");
-  const settingInpWarn = $("setting-warn-threshold");
-  if (settingInpMin)  settingInpMin.value  = subCriteriaMinThreshold;
-  if (settingInpWarn) settingInpWarn.value = subCriteriaWarningThreshold;
-
   elAdminList.innerHTML = "";
 
   if (criteriaList.length === 0) {
@@ -473,6 +430,7 @@ function renderAdminList() {
   }
 
   criteriaList.forEach(criteria => {
+    const type = criteria.type || "normal";
     const card = document.createElement("div");
     card.className = "admin-card";
     card.dataset.criteriaId = criteria.id;
@@ -506,23 +464,73 @@ function renderAdminList() {
     const fieldsRow = document.createElement("div");
     fieldsRow.className = "admin-card-fields";
 
+    // Type field group
+    const typeGroup = document.createElement("div");
+    typeGroup.className = "form-field-group";
+    const typeLabel = document.createElement("label");
+    typeLabel.className = "field-label";
+    typeLabel.textContent = "Tipo";
+
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "field";
+    typeSelect.value = type;
+    typeSelect.innerHTML = `
+      <option value="normal">Normale</option>
+      <option value="yesno">Sì/No</option>
+    `;
+
+    typeGroup.appendChild(typeLabel);
+    typeGroup.appendChild(typeSelect);
+
+    // Title field group
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "form-field-group";
+    const titleLabel = document.createElement("label");
+    titleLabel.className = "field-label";
+    titleLabel.textContent = "Titolo";
+
     const titleInput = document.createElement("input");
-    titleInput.type  = "text";
+    titleInput.type = "text";
     titleInput.className = "field";
     titleInput.value = criteria.title;
     titleInput.placeholder = "Titolo criterio";
 
+    titleGroup.appendChild(titleLabel);
+    titleGroup.appendChild(titleInput);
+
+    // Threshold field group
+    const threshGroup = document.createElement("div");
+    threshGroup.className = "form-field-group";
+    const threshLabel = document.createElement("label");
+    threshLabel.className = "field-label";
+    threshLabel.textContent = "Soglia (1-5)";
+
     const threshInput = document.createElement("input");
-    threshInput.type  = "number";
-    threshInput.className = "field field--sm";
+    threshInput.type = "number";
+    threshInput.className = "field";
     threshInput.value = criteria.threshold;
     threshInput.placeholder = "Soglia";
-    threshInput.step  = "0.1";
-    threshInput.min   = "0";
-    threshInput.max   = "5";
+    threshInput.step = "0.1";
+    threshInput.min = "0";
+    threshInput.max = "5";
+    if (type === "yesno") threshGroup.style.display = "none";
 
-    fieldsRow.appendChild(titleInput);
-    fieldsRow.appendChild(threshInput);
+    threshGroup.appendChild(threshLabel);
+    threshGroup.appendChild(threshInput);
+
+    // Update threshold visibility when type changes
+    typeSelect.addEventListener("change", (e) => {
+      const selectedType = e.target.value;
+      threshGroup.style.display = selectedType === "yesno" ? "none" : "";
+      // Show/hide sub-section
+      if (subSection) {
+        subSection.style.display = selectedType === "yesno" ? "none" : "";
+      }
+    });
+
+    fieldsRow.appendChild(typeGroup);
+    fieldsRow.appendChild(titleGroup);
+    fieldsRow.appendChild(threshGroup);
 
     const actionsRow = document.createElement("div");
     actionsRow.className = "admin-card-actions";
@@ -556,6 +564,7 @@ function renderAdminList() {
     // ── Sub-criteria section ───────────────────────────────
     const subSection = document.createElement("div");
     subSection.className = "admin-sub-section";
+    if (type === "yesno") subSection.style.display = "none";
 
     const subLabel = document.createElement("div");
     subLabel.className = "sub-section-label";
@@ -565,7 +574,16 @@ function renderAdminList() {
     subList.className = "admin-sub-list";
 
     // local copy of sub-criteria to manipulate before saving
-    let localSubs = [...(criteria.subCriteria || [])];
+    // Normalize old format (strings) to new format (objects with thresholds)
+    let localSubs = (criteria.subCriteria || []).map(sub => {
+      if (typeof sub === 'string') {
+        return { text: sub, minThreshold: 0 };
+      }
+      return {
+        text: sub.text || '',
+        minThreshold: sub.minThreshold ?? 0,
+      };
+    });
 
     function rebuildSubRows() {
       subList.innerHTML = "";
@@ -590,12 +608,27 @@ function renderAdminList() {
             <line x1="15" y1="18" x2="15.01" y2="18"></line>
           </svg>`;
 
+        // Text input for the sub-criterion
         const input = document.createElement("input");
-        input.type  = "text";
+        input.type = "text";
         input.className = "field";
-        input.value = sub;
+        input.value = sub.text;
         input.placeholder = `Sotto-criterio ${idx + 1}`;
-        input.addEventListener("input", () => { localSubs[idx] = input.value; });
+        input.addEventListener("input", () => { localSubs[idx].text = input.value; });
+
+        // Minimum threshold input
+        const minThreshInput = document.createElement("input");
+        minThreshInput.type = "number";
+        minThreshInput.className = "field field--sm";
+        minThreshInput.value = sub.minThreshold;
+        minThreshInput.placeholder = "Min";
+        minThreshInput.step = "0.1";
+        minThreshInput.min = "0";
+        minThreshInput.max = "5";
+        minThreshInput.title = "Soglia minima per questo sotto-criterio";
+        minThreshInput.addEventListener("input", () => {
+          localSubs[idx].minThreshold = parseFloat(minThreshInput.value) || 0;
+        });
 
         const removeBtn = document.createElement("button");
         removeBtn.className = "btn-remove-sub";
@@ -609,6 +642,7 @@ function renderAdminList() {
 
         row.appendChild(subDragHandle);
         row.appendChild(input);
+        row.appendChild(minThreshInput);
         row.appendChild(removeBtn);
         subList.appendChild(row);
       });
@@ -623,7 +657,19 @@ function renderAdminList() {
 
       if (orderedIds.join("|") === currentIds.join("|")) return;
 
-      localSubs = rows.map(row => row.querySelector("input")?.value ?? "");
+      const updatedSubs = [];
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll("input");
+        const textInput = inputs[0];
+        const minInput = inputs[1];
+        if (textInput && textInput.value.trim()) {
+          updatedSubs.push({
+            text: textInput.value.trim(),
+            minThreshold: parseFloat(minInput?.value) || 0,
+          });
+        }
+      });
+      localSubs = updatedSubs;
       rebuildSubRows();
       showInlineMsg(msgEl, "Ordine sotto-criteri aggiornato. Premi Salva", "ok");
     });
@@ -635,10 +681,10 @@ function renderAdminList() {
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Aggiungi Sotto-criterio`;
     addSubBtn.addEventListener("click", () => {
-      localSubs.push("");
+      localSubs.push({ text: "", minThreshold: 0 });
       rebuildSubRows();
       // focus new input
-      const inputs = subList.querySelectorAll("input");
+      const inputs = subList.querySelectorAll("input[type='text']");
       if (inputs.length) inputs[inputs.length - 1].focus();
     });
 
@@ -650,22 +696,45 @@ function renderAdminList() {
     // ── Wire save / delete ─────────────────────────────────
     saveBtn.addEventListener("click", async () => {
       const newTitle = titleInput.value.trim();
+      const newType = typeSelect.value;
       const newThresh = parseFloat(threshInput.value);
 
       if (!newTitle) { showInlineMsg(msgEl, "Il titolo è obbligatorio", "err"); return; }
-      if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
-        showInlineMsg(msgEl, "La soglia deve essere tra 0 e 5", "err"); return;
+
+      // Validate threshold only for normal criteria
+      if (newType === "normal") {
+        if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
+          showInlineMsg(msgEl, "La soglia deve essere tra 0 e 5", "err"); return;
+        }
       }
 
       saveBtn.disabled = true;
       saveBtn.textContent = "Salvataggio...";
 
-      await saveCriteria(criteria.id, {
-        title:       newTitle,
-        threshold:   newThresh,
-        subCriteria: localSubs.map(s => s.trim()).filter(Boolean),
-        order:       criteria.order ?? 0,
-      }, msgEl);
+      let dataToSave = {
+        title: newTitle,
+        type: newType,
+        order: criteria.order ?? 0,
+      };
+
+      if (newType === "normal") {
+        // Filter out empty sub-criteria and ensure they have the proper structure
+        const filteredSubs = localSubs
+          .filter(sub => sub.text && sub.text.trim())
+          .map(sub => ({
+            text: sub.text.trim(),
+            minThreshold: Math.max(0, Math.min(5, parseFloat(sub.minThreshold) || 0)),
+          }));
+
+        dataToSave.threshold = newThresh;
+        dataToSave.subCriteria = filteredSubs;
+      } else {
+        // For yesno criteria
+        dataToSave.threshold = 0;
+        // Don't set subCriteria or set it to undefined
+      }
+
+      await saveCriteria(criteria.id, dataToSave, msgEl);
 
       saveBtn.disabled = false;
       saveBtn.textContent = "Salva";
@@ -701,8 +770,8 @@ function renderAdminList() {
 // ─────────────────────────────────────────────────────────────
 function showState(name) {
   elStateLoading.classList.toggle("hidden", name !== "loading");
-  elStateError.classList.toggle("hidden",   name !== "error");
-  elStateEmpty.classList.toggle("hidden",   name !== "empty");
+  elStateError.classList.toggle("hidden", name !== "error");
+  elStateEmpty.classList.toggle("hidden", name !== "empty");
   elCriteriaContainer.classList.add("hidden");
   elOverallResult.classList.add("hidden");
 }
@@ -758,36 +827,20 @@ function ensureScoreEntry(criteriaId, subIndex) {
   return scores[criteriaId][subIndex];
 }
 
-function isCommentRequired(score) {
-  return subCriteriaWarningThreshold >= 0 && score > 0 && score <= subCriteriaWarningThreshold;
+function isCommentRequired() {
+  return false;
 }
 
 function checkMissingComments() {
-  return criteriaList.some(criteria => {
-    const rows = scores[criteria.id] || {};
-    return (criteria.subCriteria || []).some((_, subIdx) => {
-      const entry = rows[subIdx];
-      if (!entry) return false;
-      return isCommentRequired(entry.score) && !entry.comment.trim();
-    });
-  });
+  return false;
 }
 
 function updateCommentState(rowEl, entry) {
   const textarea = rowEl.querySelector(".subcriteria-comment");
-  const warning  = rowEl.querySelector(".comment-warning");
-  const error    = rowEl.querySelector(".comment-error");
 
-  if (!textarea || !warning || !error) return;
+  if (!textarea) return;
 
-  const required = isCommentRequired(entry.score);
-  const missing  = required && !entry.comment.trim();
-
-  rowEl.classList.toggle("row--comment-required", required);
-  rowEl.classList.toggle("row--comment-missing", missing);
-  textarea.required = required;
-  warning.classList.toggle("hidden", !required);
-  error.classList.toggle("hidden", !missing);
+  textarea.required = false;
 }
 
 /**
@@ -795,25 +848,28 @@ function updateCommentState(rowEl, entry) {
  * on each rendered sub-criteria row for a given criteria.
  *
  *  row--below-min     : score is 1–(minThreshold-1) → forced FAIL indicator
- *  row--below-warning : score is 1–(warnThreshold-1) AND above min → comment required
  *
- * Score 0 (not evaluated) is excluded from both indicators.
+ * Score 0 (not evaluated) is excluded from this indicator.
  */
 function updateRowMinIndicators(criteriaId, subCount) {
+  const criteria = criteriaList.find(c => c.id === criteriaId);
+  if (!criteria) return;
+
   const rows = scores[criteriaId] || {};
   for (let i = 0; i < subCount; i++) {
     const rowEl = document.querySelector(
       `.subcriteria-row[data-criteria-id="${criteriaId}"][data-sub-index="${i}"]`
     );
     if (!rowEl) continue;
+
     const entry = rows[i] || { score: 0, comment: "" };
+    const sub = criteria.subCriteria[i];
+    const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
     const v = entry.score ?? 0;
 
-    const belowMin  = subCriteriaMinThreshold     > 0 && v > 0 && v < subCriteriaMinThreshold;
-    const belowWarn = isCommentRequired(v);
+    const belowMin = minThreshold > 0 && v > 0 && v < minThreshold;
 
-    rowEl.classList.toggle("row--below-min",  belowMin);
-    rowEl.classList.toggle("row--below-warn", belowWarn);
+    rowEl.classList.toggle("row--below-min", belowMin);
     updateCommentState(rowEl, entry);
   }
 }
@@ -823,50 +879,66 @@ function updateBadges() {
   let anyCriterionFailed = false;
 
   criteriaList.forEach(criteria => {
-    const avg   = averageScore(criteria.id, criteria.subCriteria.length);
+    const type = criteria.type || "normal";
     const badge = document.querySelector(`[data-badge="${criteria.id}"]`);
     if (!badge) return;
 
-    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold} minSub=${subCriteriaMinThreshold}`);
+    let pass = false;
 
-    if (avg === null) {
-      allScored = false;
-      badge.className   = "badge pending";
-      badge.textContent = "–";
-    } else {
-      // Step 1: fail immediately if any sub-criteria is below the global minimum.
+    if (type === "normal") {
+      const avg = averageScore(criteria.id, criteria.subCriteria.length);
+      console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
+
+      if (avg === null) {
+        allScored = false;
+        badge.className = "badge pending";
+        badge.textContent = "–";
+        return;
+      }
+
+      // Step 1: fail immediately if any sub-criteria is below its per-sub-criteria minimum.
       const rows = scores[criteria.id] || {};
-      const anyBelowMin = subCriteriaMinThreshold > 0 &&
-        Object.values(rows).some(entry => {
-          const value = entry?.score ?? 0;
-          return value > 0 && value < subCriteriaMinThreshold;
-        });
+      const anyBelowMin = (criteria.subCriteria || []).some((sub, idx) => {
+        const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+        const value = rows[idx]?.score ?? 0;
+        return minThreshold > 0 && value > 0 && value < minThreshold;
+      });
 
       // Step 2: compare average to the criteria threshold.
-      const pass = !anyBelowMin && avg >= criteria.threshold;
-      if (!pass) anyCriterionFailed = true;
-      badge.className   = `badge ${pass ? "pass" : "fail"}`;
-      badge.textContent = pass ? "Superato" : "Non Superato";
+      pass = !anyBelowMin && avg >= criteria.threshold;
+
+      // Update per-row visual indicator for scores below the per-sub-criteria minimum
+      updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
+    } else if (type === "yesno") {
+      const entry = scores[criteria.id];
+      if (entry?.answer === null || entry?.answer === undefined) {
+        allScored = false;
+        badge.className = "badge pending";
+        badge.textContent = "–";
+        return;
+      }
+      pass = entry.answer === true;
+      console.log(`[updateBadges] "${criteria.title}" yesno answer=${entry.answer} pass=${pass}`);
     }
 
-    // Update per-row visual indicator for scores below the global minimum
-    updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
+    if (!pass) anyCriterionFailed = true;
+    badge.className = `badge ${pass ? "pass" : "fail"}`;
+    badge.textContent = pass ? "Superato" : "Non Superato";
   });
 
   if (criteriaList.length === 0) {
-    elOverallBadge.className   = "badge pending";
+    elOverallBadge.className = "badge pending";
     elOverallBadge.textContent = "–";
   } else if (!allScored) {
-    // null avg means some rows were never initialised (shouldn't normally happen)
-    elOverallBadge.className   = "badge pending";
+    elOverallBadge.className = "badge pending";
     elOverallBadge.textContent = "–";
   } else {
-    const hasMissingComments = checkMissingComments();
-    const overallPass = !anyCriterionFailed;// && !hasMissingComments;
-    elOverallBadge.className   = `badge ${overallPass ? "pass" : "fail"}`;
+    const overallPass = !anyCriterionFailed;
+    elOverallBadge.className = `badge ${overallPass ? "pass" : "fail"}`;
     elOverallBadge.textContent = overallPass ? "Superato" : "Non Superato";
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // Evaluator: Circles & Clear
@@ -907,10 +979,10 @@ function applyRowState(rowEl, score) {
 
 function onCircleClick(e) {
   const circle = e.currentTarget;
-  const row    = circle.closest(".subcriteria-row");
-  const cid    = row.dataset.criteriaId;
-  const idx    = parseInt(row.dataset.subIndex, 10);
-  const value  = parseInt(circle.dataset.value, 10);
+  const row = circle.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+  const value = parseInt(circle.dataset.value, 10);
 
   const entry = ensureScoreEntry(cid, idx);
   entry.score = value;                           // write BEFORE recalc
@@ -940,7 +1012,31 @@ function onCommentInput(e) {
 
   const entry = ensureScoreEntry(cid, idx);
   entry.comment = textarea.value;
+
   updateCommentState(row, entry);
+  updateBadges();
+}
+
+function onYesNoClick(e) {
+  const btn = e.currentTarget;
+  const cid = btn.dataset.criteriaId;
+  const answer = btn.dataset.answer === 'true';
+
+  if (!scores[cid]) {
+    scores[cid] = { answer: null };
+  }
+  scores[cid].answer = answer;
+
+  console.log(`[onYesNoClick] ${cid} → ${answer}`, scores[cid]);
+
+  // Update button states
+  const card = btn.closest(".criteria-card");
+  const yesBtn = card.querySelector('[data-answer="true"]');
+  const noBtn = card.querySelector('[data-answer="false"]');
+
+  yesBtn.classList.toggle("active", answer === true);
+  noBtn.classList.toggle("active", answer === false);
+
   updateBadges();
 }
 
@@ -967,6 +1063,132 @@ async function downloadPdf() {
     elBtnDownloadPdf.disabled = false;
     elBtnDownloadPdf.innerHTML = originalLabel;
   }
+}
+
+function getEvaluationState() {
+  const normalizedScores = {};
+
+  Object.keys(scores).forEach(criteriaId => {
+    const data = scores[criteriaId];
+    if (!data || typeof data !== "object") return;
+
+    if (data.answer !== undefined) {
+      normalizedScores[criteriaId] = { answer: data.answer };
+      return;
+    }
+
+    const rowKeys = Object.keys(data)
+      .filter(key => String(Number(key)) === key)
+      .sort((a, b) => Number(a) - Number(b));
+
+    normalizedScores[criteriaId] = rowKeys.map(key => {
+      const entry = data[key];
+      return {
+        score: Number(entry.score) || 0,
+        comment: typeof entry.comment === "string" ? entry.comment : "",
+      };
+    });
+  });
+
+  return {
+    source: "evalkit",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    scores: normalizedScores,
+  };
+}
+
+function downloadJsonState() {
+  const blob = new Blob([JSON.stringify(getEvaluationState(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "valutazione-stato.json";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+function normalizeYesNoAnswer(value) {
+  if (value === true || value === false) return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
+function extractScoreEntries(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+
+  const numericKeys = Object.keys(data)
+    .filter(key => String(Number(key)) === key)
+    .sort((a, b) => Number(a) - Number(b));
+
+  return numericKeys.map(key => data[key]);
+}
+
+function restoreEvaluationState(state) {
+  if (!state || typeof state !== "object" || !state.scores || typeof state.scores !== "object") {
+    throw new Error("File JSON non valido");
+  }
+
+  const importedScores = state.scores;
+
+  Object.keys(importedScores).forEach(criteriaId => {
+    const criteria = criteriaList.find(c => c.id === criteriaId);
+    if (!criteria) return;
+
+    const data = importedScores[criteriaId];
+
+    if (criteria.type === "yesno") {
+      const answer = normalizeYesNoAnswer(data?.answer);
+      scores[criteriaId] = { answer };
+      return;
+    }
+
+    const entries = extractScoreEntries(data);
+    if (!entries.length) return;
+
+    scores[criteriaId] = {};
+    entries.forEach((entry, index) => {
+      if (typeof entry !== "object" || entry === null) return;
+      const score = Number(entry.score);
+      const comment = typeof entry.comment === "string" ? entry.comment : "";
+      if (!Number.isFinite(score) || score < 0 || score > 5) return;
+      scores[criteriaId][index] = { score, comment };
+    });
+  });
+
+  renderEvaluator(criteriaList);
+  updateBadges();
+}
+
+function handleJsonFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      restoreEvaluationState(data);
+      alert("Valutazione ripristinata correttamente.");
+    } catch (err) {
+      console.error("Import JSON error:", err);
+      alert("Impossibile importare il file JSON. Controlla che sia un file valido.");
+    }
+  };
+  reader.onerror = () => {
+    alert("Errore nella lettura del file JSON.");
+  };
+  reader.readAsText(file);
+}
+
+function openJsonFilePicker() {
+  if (!elJsonFileInput) return;
+  elJsonFileInput.value = "";
+  elJsonFileInput.click();
 }
 
 function buildEvaluationPdf(jsPdfCtor) {
@@ -1076,23 +1298,42 @@ function buildEvaluationPdf(jsPdfCtor) {
   y += sectionGap;
 
   criteriaList.forEach((criteria, criteriaIndex) => {
+    const type = criteria.type || "normal";
     const criterionSummary = getPdfCriterionSummary(criteria);
     const headerHeight = getPdfCriterionHeaderHeight(pdf, criteria, criterionSummary, contentWidth);
-    const firstRow = (criteria.subCriteria || [])[0];
-    const firstRowHeight = firstRow
-      ? getPdfRowHeight(pdf, criteria, 0, firstRow, contentWidth)
-      : 0;
 
-    ensureSpace(headerHeight + firstRowHeight + 8);
-    y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
+    if (type === "normal") {
+      const firstRow = (criteria.subCriteria || [])[0];
+      const firstRowHeight = firstRow
+        ? getPdfRowHeight(pdf, criteria, 0, firstRow, contentWidth)
+        : 0;
 
-    (criteria.subCriteria || []).forEach((subCriteriaText, subIdx) => {
-      const rowHeight = getPdfRowHeight(pdf, criteria, subIdx, subCriteriaText, contentWidth);
-      ensureSpace(rowHeight + 6, (nextY) =>
-        drawPdfCriterionContinuationHeader(pdf, criteria, marginX, nextY, contentWidth)
-      );
-      y = drawPdfSubCriteriaRow(pdf, criteria, subIdx, subCriteriaText, marginX, y, contentWidth);
-    });
+      ensureSpace(headerHeight + firstRowHeight + 8);
+      y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
+
+      (criteria.subCriteria || []).forEach((sub, subIdx) => {
+        const rowHeight = getPdfRowHeight(pdf, criteria, subIdx, sub, contentWidth);
+        ensureSpace(rowHeight + 6, (nextY) =>
+          drawPdfCriterionContinuationHeader(pdf, criteria, marginX, nextY, contentWidth)
+        );
+        y = drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, marginX, y, contentWidth);
+      });
+    } else if (type === "yesno") {
+      ensureSpace(headerHeight + 40);
+      y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
+
+      const entry = scores[criteria.id];
+      const answer = entry?.answer;
+      const answerText = answer === true ? "Sì" : (answer === false ? "No" : "Non risposto");
+      const answerColor = answer === true ? [26, 122, 74] : (answer === false ? [179, 45, 45] : [112, 110, 104]);
+
+      y += 8;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(11);
+      pdf.setTextColor(...answerColor);
+      pdf.text(`Risposta: ${answerText}`, marginX + 12, y);
+      y += 16;
+    }
 
     if (criteriaIndex < criteriaList.length - 1) {
       y += 4;
@@ -1105,13 +1346,27 @@ function buildEvaluationPdf(jsPdfCtor) {
 }
 
 function getPdfCriterionSummary(criteria) {
+  const type = criteria.type || "normal";
+
+  if (type === "yesno") {
+    const entry = scores[criteria.id];
+    const answer = entry?.answer;
+    const pass = answer === true;
+    return {
+      answer,
+      pass,
+      label: answer === null || answer === undefined ? "In sospeso" : (pass ? "Sì" : "No"),
+    };
+  }
+
+  // Normal criteria
   const avg = averageScore(criteria.id, criteria.subCriteria.length);
   const rows = scores[criteria.id] || {};
-  const anyBelowMin = subCriteriaMinThreshold > 0 &&
-    Object.values(rows).some(entry => {
-      const value = entry?.score ?? 0;
-      return value > 0 && value < subCriteriaMinThreshold;
-    });
+  const anyBelowMin = (criteria.subCriteria || []).some((sub, idx) => {
+    const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+    const value = rows[idx]?.score ?? 0;
+    return minThreshold > 0 && value > 0 && value < minThreshold;
+  });
   const pass = avg !== null && !anyBelowMin && avg >= criteria.threshold;
 
   return {
@@ -1122,26 +1377,37 @@ function getPdfCriterionSummary(criteria) {
   };
 }
 
+
 function getPdfOverallSummary() {
   if (criteriaList.length === 0) {
     return { label: "In sospeso", pass: false, hasMissingComments: false };
   }
 
   const summaries = criteriaList.map(getPdfCriterionSummary);
-  const hasPending = summaries.some(summary => summary.avg === null);
-  const hasFailure = summaries.some(summary => summary.avg !== null && !summary.pass);
-  const hasMissingComments = checkMissingComments();
+
+  // Check if any criteria is pending
+  const hasPending = summaries.some(summary => {
+    const type = summary.avg === undefined ? "yesno" : "normal";
+    if (type === "yesno") {
+      return summary.answer === null || summary.answer === undefined;
+    }
+    return summary.avg === null;
+  });
+
+  // Check if any criteria failed
+  const hasFailure = summaries.some(summary => !summary.pass);
 
   if (hasPending) {
-    return { label: "In sospeso", pass: false, hasMissingComments };
+    return { label: "In sospeso", pass: false, hasMissingComments: false };
   }
 
   return {
     label: hasFailure ? "Non Superato" : "Superato",
     pass: !hasFailure,
-    hasMissingComments,
+    hasMissingComments: false,
   };
 }
+
 
 function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
   const titleHeight = measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
@@ -1150,7 +1416,7 @@ function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
   const noteHeight = summary.anyBelowMin
     ? measurePdfTextHeight(
       pdf,
-      `Almeno un sotto-criterio e sotto il minimo (${subCriteriaMinThreshold}).`,
+      "Almeno un sotto-criterio non ha raggiunto il minimo richiesto.",
       width,
       9,
       13
@@ -1176,7 +1442,7 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   y += measurePdfTextHeight(pdf, metaText, width, 10, 14);
 
   if (summary.anyBelowMin) {
-    const noteText = `Almeno un sotto-criterio e sotto il minimo (${subCriteriaMinThreshold}).`;
+    const noteText = "Almeno un sotto-criterio non ha raggiunto il minimo richiesto.";
     drawWrappedPdfText(pdf, noteText, x, y, width, {
       fontSize: 9,
       lineHeight: 13,
@@ -1199,10 +1465,11 @@ function drawPdfCriterionContinuationHeader(pdf, criteria, x, startY, width) {
   return startY + measurePdfTextHeight(pdf, label, width, 11, 14, "bold") + 8;
 }
 
-function getPdfRowHeight(pdf, criteria, subIdx, subCriteriaText, width) {
+function getPdfRowHeight(pdf, criteria, subIdx, sub, width) {
   const entry = ensureScoreEntry(criteria.id, subIdx);
-  const noteLines = getPdfRowNotes(entry.score, entry.comment);
-  const titleHeight = measurePdfTextHeight(pdf, `${subIdx + 1}. ${subCriteriaText}`, width, 11, 15, "bold");
+  const noteLines = getPdfRowNotes(entry.score, criteria, subIdx);
+  const subLabel = typeof sub === 'object' ? sub.text : String(sub);
+  const titleHeight = measurePdfTextHeight(pdf, `${subIdx + 1}. ${subLabel}`, width, 11, 15, "bold");
   const scoreHeight = measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
   const notesHeight = noteLines.length
     ? measurePdfTextHeight(pdf, noteLines.join("  |  "), width, 9, 12)
@@ -1220,11 +1487,12 @@ function getPdfRowHeight(pdf, criteria, subIdx, subCriteriaText, width) {
   return titleHeight + scoreHeight + notesHeight + commentTitleHeight + commentHeight + 18;
 }
 
-function drawPdfSubCriteriaRow(pdf, criteria, subIdx, subCriteriaText, x, startY, width) {
+function drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, x, startY, width) {
   const entry = ensureScoreEntry(criteria.id, subIdx);
   let y = startY;
+  const subLabel = typeof sub === 'object' ? sub.text : String(sub);
 
-  const title = `${subIdx + 1}. ${subCriteriaText}`;
+  const title = `${subIdx + 1}. ${subLabel}`;
   drawWrappedPdfText(pdf, title, x, y, width, {
     fontSize: 11,
     lineHeight: 15,
@@ -1239,7 +1507,7 @@ function drawPdfSubCriteriaRow(pdf, criteria, subIdx, subCriteriaText, x, startY
   });
   y += measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
 
-  const notes = getPdfRowNotes(entry.score, entry.comment);
+  const notes = getPdfRowNotes(entry.score, criteria, subIdx);
   if (notes.length) {
     const notesText = notes.join("  |  ");
     drawWrappedPdfText(pdf, notesText, x, y, width, {
@@ -1385,13 +1653,13 @@ function getPdfCommentLabel(comment) {
   return comment.trim() || "Nessun commento.";
 }
 
-function getPdfRowNotes(score, comment) {
+function getPdfRowNotes(score, criteria, subIdx) {
   const notes = [];
-  if (subCriteriaMinThreshold > 0 && score > 0 && score < subCriteriaMinThreshold) {
-    notes.push(`Sotto il minimo (${subCriteriaMinThreshold})`);
-  }
-  if (isCommentRequired(score)) {
-    notes.push(comment.trim() ? "Commento obbligatorio presente" : "Commento obbligatorio mancante");
+  const sub = criteria.subCriteria?.[subIdx];
+  const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+
+  if (minThreshold > 0 && score > 0 && score < minThreshold) {
+    notes.push(`Sotto il minimo (${minThreshold})`);
   }
   return notes;
 }
@@ -1469,16 +1737,7 @@ function renderEvaluator(criteriaArr) {
   elCriteriaContainer.innerHTML = "";
 
   criteriaArr.forEach((criteria, cardIndex) => {
-    // Preserve local-only score/comment state across re-renders.
-    const existingRows = scores[criteria.id] || {};
-    scores[criteria.id] = {};
-    (criteria.subCriteria || []).forEach((_, i) => {
-      const existingEntry = existingRows[i];
-      scores[criteria.id][i] = {
-        score: existingEntry?.score ?? 0,
-        comment: existingEntry?.comment ?? "",
-      };
-    });
+    const type = criteria.type || "normal";
 
     const card = document.createElement("div");
     card.className = "criteria-card";
@@ -1489,17 +1748,21 @@ function renderEvaluator(criteriaArr) {
     header.className = "card-header";
 
     const titleWrap = document.createElement("div");
-    const titleEl   = document.createElement("div");
-    titleEl.className   = "card-title";
+    const titleEl = document.createElement("div");
+    titleEl.className = "card-title";
     titleEl.textContent = criteria.title;
-    const threshEl  = document.createElement("div");
-    threshEl.className   = "card-threshold";
-    threshEl.textContent = `Soglia: ${criteria.threshold}`;
-    titleWrap.appendChild(titleEl);
-    titleWrap.appendChild(threshEl);
+
+    if (type === "normal") {
+      const threshEl = document.createElement("div");
+      threshEl.className = "card-threshold";
+      threshEl.textContent = `Soglia: ${criteria.threshold}`;
+      titleWrap.appendChild(threshEl);
+    }
+
+    titleWrap.insertBefore(titleEl, titleWrap.firstChild);
 
     const badge = document.createElement("span");
-    badge.className   = "badge pending";
+    badge.className = "badge pending";
     badge.textContent = "–";
     badge.dataset.badge = criteria.id;
 
@@ -1507,94 +1770,138 @@ function renderEvaluator(criteriaArr) {
     header.appendChild(badge);
     card.appendChild(header);
 
-    // Sub-criteria
-    const list = document.createElement("div");
-    list.className = "subcriteria-list";
+    if (type === "normal") {
+      // ────── Normal criteria with sub-criteria ──────
+      const normalizedSubs = (criteria.subCriteria || []).map(sub => {
+        if (typeof sub === 'string') {
+          return { text: sub, minThreshold: 0 };
+        }
+        return {
+          text: sub.text || '',
+          minThreshold: sub.minThreshold ?? 0,
+        };
+      });
+      criteria.subCriteria = normalizedSubs;
 
-    (criteria.subCriteria || []).forEach((sub, subIdx) => {
-      const entry = ensureScoreEntry(criteria.id, subIdx);
-      const row = document.createElement("div");
-      row.className = "subcriteria-row row--cleared"; // start cleared
-      row.dataset.criteriaId = criteria.id;
-      row.dataset.subIndex   = subIdx;
+      // Preserve local-only score/comment state across re-renders.
+      const existingRows = scores[criteria.id] || {};
+      scores[criteria.id] = {};
+      normalizedSubs.forEach((_, i) => {
+        const existingEntry = existingRows[i];
+        scores[criteria.id][i] = {
+          score: existingEntry?.score ?? 0,
+          comment: existingEntry?.comment ?? "",
+        };
+      });
 
-      const text = document.createElement("span");
-      text.className   = "subcriteria-text";
-      text.textContent = sub;
+      const list = document.createElement("div");
+      list.className = "subcriteria-list";
 
-      // Controls wrapper (clear btn + not-eval label + circles)
-      const controls = document.createElement("div");
-      controls.className = "row-controls";
+      normalizedSubs.forEach((sub, subIdx) => {
+        const entry = ensureScoreEntry(criteria.id, subIdx);
+        const row = document.createElement("div");
+        row.className = "subcriteria-row row--cleared";
+        row.dataset.criteriaId = criteria.id;
+        row.dataset.subIndex = subIdx;
 
-      // Clear button
-      const clearBtn = document.createElement("button");
-      clearBtn.className = "btn-clear";
-      clearBtn.type      = "button";
-      clearBtn.title     = "Azzera punteggio";
-      clearBtn.setAttribute("aria-label", "Azzera il punteggio a non valutato");
-      clearBtn.innerHTML = `
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>`;
-      clearBtn.addEventListener("click", onClearClick);
+        const text = document.createElement("span");
+        text.className = "subcriteria-text";
+        text.textContent = sub.text;
 
-      // "Not evaluated" label (shown when score = 0)
-      const notEvalLabel = document.createElement("span");
-      notEvalLabel.className = "not-eval-label";
-      notEvalLabel.textContent = "Non valutato";
+        const controls = document.createElement("div");
+        controls.className = "row-controls";
 
-      // Circles
-      const circles = document.createElement("div");
-      circles.className = "score-circles";
-      circles.setAttribute("role", "group");
-      circles.setAttribute("aria-label", `Punteggio per: ${sub}`);
+        const clearBtn = document.createElement("button");
+        clearBtn.className = "btn-clear";
+        clearBtn.type = "button";
+        clearBtn.title = "Azzera punteggio";
+        clearBtn.setAttribute("aria-label", "Azzera il punteggio a non valutato");
+        clearBtn.innerHTML = `
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>`;
+        clearBtn.addEventListener("click", onClearClick);
 
-      for (let v = 1; v <= 5; v++) {
-        const circle = document.createElement("button");
-        circle.className = "circle";
-        circle.type      = "button";
-        circle.dataset.value = v;
-        circle.setAttribute("aria-label", `Punteggio ${v}`);
-        circle.addEventListener("click", onCircleClick);
-        circles.appendChild(circle);
+        const notEvalLabel = document.createElement("span");
+        notEvalLabel.className = "not-eval-label";
+        notEvalLabel.textContent = "Non valutato";
+
+        const circles = document.createElement("div");
+        circles.className = "score-circles";
+        circles.setAttribute("role", "group");
+        circles.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
+
+        for (let v = 1; v <= 5; v++) {
+          const circle = document.createElement("button");
+          circle.className = "circle";
+          circle.type = "button";
+          circle.dataset.value = v;
+          circle.setAttribute("aria-label", `Punteggio ${v}`);
+          circle.addEventListener("click", onCircleClick);
+          circles.appendChild(circle);
+        }
+
+        controls.appendChild(clearBtn);
+        controls.appendChild(notEvalLabel);
+        controls.appendChild(circles);
+
+        const commentWrap = document.createElement("div");
+        commentWrap.className = "subcriteria-comment-wrap";
+
+        const textarea = document.createElement("textarea");
+        textarea.className = "field subcriteria-comment";
+        textarea.placeholder = "Inserisci un commento...";
+        textarea.rows = 3;
+        textarea.value = entry.comment;
+        textarea.addEventListener("input", onCommentInput);
+
+        row.appendChild(text);
+        row.appendChild(controls);
+        commentWrap.appendChild(textarea);
+        row.appendChild(commentWrap);
+        applyRowState(row, entry.score);
+        list.appendChild(row);
+      });
+
+      card.appendChild(list);
+    } else if (type === "yesno") {
+      // ────── Yes/No criteria ──────
+      // Initialize score entry for yes/no criteria
+      if (!scores[criteria.id]) {
+        scores[criteria.id] = { answer: null };
       }
+      const entry = scores[criteria.id];
 
-      controls.appendChild(clearBtn);
-      controls.appendChild(notEvalLabel); // visible when cleared
-      controls.appendChild(circles);
+      const yesnoWrap = document.createElement("div");
+      yesnoWrap.className = "yesno-wrap";
 
-      const commentWrap = document.createElement("div");
-      commentWrap.className = "subcriteria-comment-wrap";
+      const yesBtn = document.createElement("button");
+      yesBtn.className = "btn-yesno btn-yesno-yes";
+      yesBtn.type = "button";
+      yesBtn.textContent = "Sì";
+      yesBtn.dataset.criteriaId = criteria.id;
+      yesBtn.dataset.answer = "true";
+      yesBtn.addEventListener("click", onYesNoClick);
+      if (entry.answer === true) yesBtn.classList.add("active");
 
-      const textarea = document.createElement("textarea");
-      textarea.className = "field subcriteria-comment";
-      textarea.placeholder = "Inserisci un commento...";
-      textarea.rows = 3;
-      textarea.value = entry.comment;
-      textarea.addEventListener("input", onCommentInput);
+      const noBtn = document.createElement("button");
+      noBtn.className = "btn-yesno btn-yesno-no";
+      noBtn.type = "button";
+      noBtn.textContent = "No";
+      noBtn.dataset.criteriaId = criteria.id;
+      noBtn.dataset.answer = "false";
+      noBtn.addEventListener("click", onYesNoClick);
+      if (entry.answer === false) noBtn.classList.add("active");
 
-      const warning = document.createElement("p");
-      warning.className = "comment-warning hidden";
-      warning.textContent = "Commento obbligatorio nel report di valutazione";
+      yesnoWrap.appendChild(yesBtn);
+      yesnoWrap.appendChild(noBtn);
+      card.appendChild(yesnoWrap);
+    }
 
-      const error = document.createElement("p");
-      error.className = "comment-error hidden";
-      error.textContent = "Commento obbligatorio";
-
-      row.appendChild(text);
-      row.appendChild(controls);
-      commentWrap.appendChild(textarea);
-      commentWrap.appendChild(warning);
-      commentWrap.appendChild(error);
-      row.appendChild(commentWrap);
-      applyRowState(row, entry.score);
-      list.appendChild(row);
-    });
-
-    card.appendChild(list);
     elCriteriaContainer.appendChild(card);
   });
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // Event Wiring
@@ -1606,13 +1913,16 @@ elBtnCloseModal.addEventListener("click", closeLoginModal);
 elModalBackdrop.addEventListener("click", closeLoginModal);
 elBtnSubmitLogin.addEventListener("click", handleLogin);
 elLoginPassword.addEventListener("keydown", e => { if (e.key === "Enter") handleLogin(); });
-elLoginEmail.addEventListener("keydown",    e => { if (e.key === "Enter") elLoginPassword.focus(); });
+elLoginEmail.addEventListener("keydown", e => { if (e.key === "Enter") elLoginPassword.focus(); });
 
 // Logout
 elBtnLogout.addEventListener("click", () => signOut(auth));
 
 // PDF download
 elBtnDownloadPdf.addEventListener("click", downloadPdf);
+elBtnDownloadJson?.addEventListener("click", downloadJsonState);
+elBtnUploadJson?.addEventListener("click", openJsonFilePicker);
+elJsonFileInput?.addEventListener("change", handleJsonFileChange);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());
@@ -1640,17 +1950,8 @@ document.addEventListener("keydown", e => {
 
 // Add criteria
 elBtnAddCriteria.addEventListener("click", addCriteria);
-elNewTitle.addEventListener("keydown",     e => { if (e.key === "Enter") elNewThreshold.focus(); });
+elNewTitle.addEventListener("keydown", e => { if (e.key === "Enter") elNewThreshold.focus(); });
 elNewThreshold.addEventListener("keydown", e => { if (e.key === "Enter") addCriteria(); });
-
-// Global settings
-document.addEventListener("click", e => {
-  if (e.target.id === "btn-save-settings") saveSettings();
-});
-document.addEventListener("keydown", e => {
-  if (e.target.id === "setting-min-threshold"  && e.key === "Enter") saveSettings();
-  if (e.target.id === "setting-warn-threshold" && e.key === "Enter") saveSettings();
-});
 
 // ─────────────────────────────────────────────────────────────
 // Auth State Observer
@@ -1662,5 +1963,4 @@ onAuthStateChanged(auth, user => {
 // ─────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────
-loadSettings();
 loadCriteria();
