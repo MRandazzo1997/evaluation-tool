@@ -126,6 +126,13 @@
       </div>
 
       <section class="drawer-section">
+        <h3 class="section-label">Configurazione Percorso</h3>
+        <div id="pathway-settings-panel" class="pathway-settings-panel"></div>
+      </section>
+
+      <div class="drawer-divider"></div>
+
+      <section class="drawer-section">
         <h3 class="section-label">Aggiungi Nuovo Criterio</h3>
         <div class="add-form">
           <div class="form-field-group">
@@ -192,9 +199,23 @@
 
   <!-- Evaluator Main -->
   <main class="main-content">
+    <section class="pathway-panel">
+      <div class="pathway-panel-copy">
+        <span class="pathway-kicker">Percorso di finanziamento</span>
+        <h2 class="pathway-title">Seleziona la linea della call</h2>
+      </div>
+      <div class="form-field-group pathway-select-group">
+        <label class="field-label" for="pathway-select">Linea</label>
+        <select id="pathway-select" class="field">
+          <option value="lineaC">Linea C</option>
+          <option value="lineaB">Linea B</option>
+          <option value="lineaA">Linea A</option>
+        </select>
+      </div>
+    </section>
     <div id="state-loading" class="state-view">
       <div class="spinner"></div>
-      <p>Caricamento criteri...</p>
+      <p id="loading-message">Caricamento criteri...</p>
     </div>
     <div id="state-error" class="state-view hidden">
       <div class="state-icon">!</div>

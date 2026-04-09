@@ -678,6 +678,49 @@ body.drawer-resizing .drawer-resize-handle::before {
   line-height: 1.45;
 }
 
+.pathway-panel {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, rgba(42, 110, 245, .07), rgba(255, 255, 255, .84));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.pathway-kicker {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.pathway-title {
+  font-size: 1.25rem;
+  letter-spacing: -.03em;
+}
+
+.pathway-select-group {
+  min-width: 180px;
+}
+
+.pathway-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pathway-settings-title {
+  font-size: .92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 /* Sub-criteria row: below global minimum indicator */
 .subcriteria-row.row--below-min {
   position: relative;
@@ -1209,6 +1252,15 @@ body.drawer-resizing .drawer-resize-handle::before {
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 540px) {
+  .pathway-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pathway-select-group {
+    min-width: 0;
+  }
+
   .drawer-resize-handle {
     display: none;
   }

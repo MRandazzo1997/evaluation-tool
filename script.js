@@ -7,7 +7,7 @@ import { initializeApp }
 
 import {
   getFirestore, collection, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, orderBy, query, writeBatch
+  deleteDoc, doc, getDoc, orderBy, query, setDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import {
@@ -39,9 +39,17 @@ let criteriaList = [];      // cached from Firestore
 let currentUser = null;    // Firebase User | null
 let drawerOpen = false;
 let drawerResizeCleanup = null;
+let selectedPathway = localStorage.getItem("evalkit-pathway") || "lineaC";
+let currentPathwaySettings = { overallThreshold: 0 };
 const DRAWER_WIDTH_KEY = "evalkit-admin-drawer-width";
 const DRAWER_MIN_WIDTH = 360;
 const DRAWER_MAX_WIDTH = 900;
+const PATHWAY_STORAGE_KEY = "evalkit-pathway";
+const PATHWAY_CONFIG = {
+  lineaA: { id: "lineaA", label: "Linea A", mode: "weighted_overall" },
+  lineaB: { id: "lineaB", label: "Linea B", mode: "criteria_thresholds" },
+  lineaC: { id: "lineaC", label: "Linea C", mode: "criteria_thresholds" },
+};
 
 // ─────────────────────────────────────────────────────────────
 // DOM References
@@ -70,20 +78,24 @@ const elDrawer = $("admin-drawer");
 const elDrawerBackdrop = $("drawer-backdrop");
 const elBtnCloseDrawer = $("btn-close-drawer");
 const elDrawerResizeHandle = $("drawer-resize-handle");
+const elPathwaySettingsPanel = $("pathway-settings-panel");
 
 const elNewTitle = $("new-title");
 const elNewThreshold = $("new-threshold");
 const elBtnAddCriteria = $("btn-add-criteria");
 const elAddError = $("add-error");
 const elAdminList = $("admin-list");
+const elPathwaySelect = $("pathway-select");
 
 const elStateLoading = $("state-loading");
 const elStateError = $("state-error");
 const elStateEmpty = $("state-empty");
 const elErrorMessage = $("error-message");
+const elLoadingMessage = $("loading-message");
 const elCriteriaContainer = $("criteria-container");
 const elOverallResult = $("overall-result");
 const elOverallBadge = $("overall-badge");
+const elOverallLabel = document.querySelector(".overall-label");
 const elSiteHeader = document.querySelector(".site-header");
 const elMainContent = document.querySelector(".main-content");
 
@@ -106,6 +118,83 @@ function applyAuthUI(user) {
 
   // Close admin drawer on logout
   if (!loggedIn && drawerOpen) closeDrawer();
+}
+
+function getCurrentPathwayConfig() {
+  return PATHWAY_CONFIG[selectedPathway] || PATHWAY_CONFIG.lineaC;
+}
+
+function isWeightedPathway() {
+  return getCurrentPathwayConfig().mode === "weighted_overall";
+}
+
+function getCriteriaCollectionRef() {
+  return collection(db, "pathways", selectedPathway, "criteria");
+}
+
+function getCriteriaDocRef(id) {
+  return doc(db, "pathways", selectedPathway, "criteria", id);
+}
+
+function getPathwaySettingsRef() {
+  return doc(db, "pathways", selectedPathway, "meta", "settings");
+}
+
+async function loadPathwaySettings() {
+  try {
+    const snapshot = await getDoc(getPathwaySettingsRef());
+    const data = snapshot.data() || {};
+    currentPathwaySettings = {
+      overallThreshold: Number.isFinite(Number(data.overallThreshold)) ? Number(data.overallThreshold) : 0,
+    };
+  } catch (err) {
+    console.warn("Pathway settings load error:", err);
+    currentPathwaySettings = { overallThreshold: 0 };
+  }
+}
+
+function clearScores() {
+  Object.keys(scores).forEach(key => delete scores[key]);
+}
+
+function updatePathwayUI() {
+  if (elPathwaySelect) {
+    elPathwaySelect.value = selectedPathway;
+  }
+
+  const pathway = getCurrentPathwayConfig();
+  const weighted = isWeightedPathway();
+  if (elLoadingMessage) {
+    elLoadingMessage.textContent = `Caricamento criteri ${pathway.label}...`;
+  }
+
+  const emptyText = elStateEmpty?.querySelector("p");
+  if (emptyText) {
+    emptyText.innerHTML = `Nessun criterio trovato per ${pathway.label}.<br>Usa il Pannello Admin per aggiungere criteri.`;
+  }
+  if (elOverallLabel) {
+    elOverallLabel.textContent = weighted
+      ? `Risultato Complessivo · Soglia ${formatPdfAverage(currentPathwaySettings.overallThreshold ?? 0)}`
+      : "Risultato Complessivo";
+  }
+
+  const thresholdGroup = elNewThreshold?.closest(".form-field-group");
+  const thresholdLabel = thresholdGroup?.querySelector(".field-label");
+  if (thresholdGroup) {
+    thresholdGroup.style.display = weighted ? "none" : "";
+  }
+  if (thresholdLabel) {
+    thresholdLabel.textContent = weighted ? "Totale criterio" : "Soglia (1-5)";
+  }
+}
+
+async function handlePathwayChange(nextPathway) {
+  if (!PATHWAY_CONFIG[nextPathway] || nextPathway === selectedPathway) return;
+  selectedPathway = nextPathway;
+  localStorage.setItem(PATHWAY_STORAGE_KEY, selectedPathway);
+  clearScores();
+  updatePathwayUI();
+  await loadCriteria();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -263,9 +352,12 @@ function startDrawerResize(event) {
 // ─────────────────────────────────────────────────────────────
 async function loadCriteria() {
   showState("loading");
+  updatePathwayUI();
 
   try {
-    const q = query(collection(db, "criteria"), orderBy("order"));
+    await loadPathwaySettings();
+    updatePathwayUI();
+    const q = query(getCriteriaCollectionRef(), orderBy("order"));
     const snapshot = await getDocs(q);
 
     criteriaList = snapshot.docs.map(d => {
@@ -322,6 +414,7 @@ async function loadCriteria() {
 async function addCriteria() {
   const title = elNewTitle.value.trim();
   const threshold = parseFloat(elNewThreshold.value);
+  const weighted = isWeightedPathway();
 
   hideError(elAddError);
 
@@ -330,7 +423,7 @@ async function addCriteria() {
     return;
   }
 
-  if (isNaN(threshold) || threshold < 0 || threshold > 5) {
+  if (!weighted && (isNaN(threshold) || threshold < 0 || threshold > 5)) {
     showError(elAddError, "La soglia deve essere un numero tra 0 e 5.");
     return;
   }
@@ -346,12 +439,12 @@ async function addCriteria() {
     const newCriteria = {
       title,
       type: "normal",
-      threshold,
+      threshold: weighted ? 0 : threshold,
       order: newOrder,
       subCriteria: [],
     };
 
-    await addDoc(collection(db, "criteria"), newCriteria);
+    await addDoc(getCriteriaCollectionRef(), newCriteria);
 
     elNewTitle.value = "";
     elNewThreshold.value = "";
@@ -373,7 +466,7 @@ async function addCriteria() {
 // ─────────────────────────────────────────────────────────────
 async function saveCriteria(id, data, msgEl) {
   try {
-    await updateDoc(doc(db, "criteria", id), data);
+    await updateDoc(getCriteriaDocRef(id), data);
     showInlineMsg(msgEl, "Salvato", "ok");
     await loadCriteria();
   } catch (err) {
@@ -389,7 +482,7 @@ async function deleteCriteria(id, cardEl) {
   try {
     cardEl.style.opacity = "0.4";
     cardEl.style.pointerEvents = "none";
-    await deleteDoc(doc(db, "criteria", id));
+    await deleteDoc(getCriteriaDocRef(id));
     await loadCriteria();
   } catch (err) {
     alert("Eliminazione non riuscita: " + err.message);
@@ -409,8 +502,78 @@ function showInlineMsg(el, text, type) {
   el._timer = setTimeout(() => el.classList.add("hidden"), 2500);
 }
 
+function renderPathwaySettingsPanel() {
+  if (!elPathwaySettingsPanel) return;
+
+  const pathway = getCurrentPathwayConfig();
+  const weighted = isWeightedPathway();
+  elPathwaySettingsPanel.innerHTML = "";
+
+  const info = document.createElement("div");
+  info.className = "pathway-settings-copy";
+  info.innerHTML = `
+    <div class="pathway-settings-title">${pathway.label}</div>
+    <p class="field-hint">${weighted
+      ? "Linea A usa un'unica soglia complessiva e il totale è calcolato come somma di punteggio × peso."
+      : "Linea B e Linea C usano soglie per criterio e configurazione standard dei sotto-criteri."}</p>
+  `;
+  elPathwaySettingsPanel.appendChild(info);
+
+  if (!weighted) return;
+
+  const row = document.createElement("div");
+  row.className = "settings-row";
+
+  const thresholdInput = document.createElement("input");
+  thresholdInput.type = "number";
+  thresholdInput.className = "field";
+  thresholdInput.min = "0";
+  thresholdInput.step = "0.1";
+  thresholdInput.placeholder = "Soglia complessiva";
+  thresholdInput.value = currentPathwaySettings.overallThreshold ?? 0;
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.type = "button";
+  saveBtn.textContent = "Salva soglia";
+
+  const msgEl = document.createElement("span");
+  msgEl.className = "inline-msg hidden";
+
+  saveBtn.addEventListener("click", async () => {
+    const nextThreshold = parseFloat(thresholdInput.value);
+    if (isNaN(nextThreshold) || nextThreshold < 0) {
+      showInlineMsg(msgEl, "Inserisci una soglia valida", "err");
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Salvataggio...";
+    try {
+      await setDoc(getPathwaySettingsRef(), { overallThreshold: nextThreshold }, { merge: true });
+      currentPathwaySettings.overallThreshold = nextThreshold;
+      updatePathwayUI();
+      renderEvaluator(criteriaList);
+      updateBadges();
+      showInlineMsg(msgEl, "Soglia salvata", "ok");
+    } catch (err) {
+      showInlineMsg(msgEl, "Errore: " + err.message, "err");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Salva soglia";
+    }
+  });
+
+  row.appendChild(thresholdInput);
+  row.appendChild(saveBtn);
+  elPathwaySettingsPanel.appendChild(row);
+  elPathwaySettingsPanel.appendChild(msgEl);
+}
+
 function renderAdminList() {
   elAdminList.innerHTML = "";
+  renderPathwaySettingsPanel();
+  const weighted = isWeightedPathway();
 
   if (criteriaList.length === 0) {
     elAdminList.innerHTML = '<div class="admin-empty">Nessun criterio presente. Aggiungine uno qui sopra.</div>';
@@ -472,7 +635,7 @@ function renderAdminList() {
     threshGroup.className = "form-field-group";
     const threshLabel = document.createElement("label");
     threshLabel.className = "field-label";
-    threshLabel.textContent = "Soglia (1-5)";
+    threshLabel.textContent = weighted ? "Totale criterio" : "Soglia (1-5)";
 
     const threshInput = document.createElement("input");
     threshInput.type = "number";
@@ -482,6 +645,7 @@ function renderAdminList() {
     threshInput.step = "0.1";
     threshInput.min = "0";
     threshInput.max = "5";
+    threshGroup.style.display = weighted ? "none" : "";
 
     threshGroup.appendChild(threshLabel);
     threshGroup.appendChild(threshInput);
@@ -575,14 +739,20 @@ function renderAdminList() {
         const minThreshInput = document.createElement("input");
         minThreshInput.type = "number";
         minThreshInput.className = "field field--sm";
-        minThreshInput.value = sub.minThreshold;
-        minThreshInput.placeholder = "Min";
+        minThreshInput.value = weighted ? sub.weight : sub.minThreshold;
+        minThreshInput.placeholder = weighted ? "Peso" : "Min";
         minThreshInput.step = "0.1";
         minThreshInput.min = "0";
-        minThreshInput.max = "5";
-        minThreshInput.title = "Soglia minima per questo sotto-criterio";
+        minThreshInput.max = weighted ? "999" : "5";
+        minThreshInput.title = weighted
+          ? "Peso di questo sotto-criterio"
+          : "Soglia minima per questo sotto-criterio";
         minThreshInput.addEventListener("input", () => {
-          localSubs[idx].minThreshold = parseFloat(minThreshInput.value) || 0;
+          if (weighted) {
+            localSubs[idx].weight = parseFloat(minThreshInput.value) || 0;
+          } else {
+            localSubs[idx].minThreshold = parseFloat(minThreshInput.value) || 0;
+          }
         });
         minThreshInput.style.display = sub.type === "yesno" ? "none" : "";
 
@@ -590,6 +760,7 @@ function renderAdminList() {
           localSubs[idx].type = subTypeSelect.value === "yesno" ? "yesno" : "normal";
           if (localSubs[idx].type === "yesno") {
             localSubs[idx].minThreshold = 0;
+            localSubs[idx].weight = 0;
           }
           rebuildSubRows();
         });
@@ -631,7 +802,8 @@ function renderAdminList() {
           updatedSubs.push({
             text: textInput.value.trim(),
             type: typeInput?.value === "yesno" ? "yesno" : "normal",
-            minThreshold: typeInput?.value === "yesno" ? 0 : (parseFloat(minInput?.value) || 0),
+            minThreshold: weighted || typeInput?.value === "yesno" ? 0 : (parseFloat(minInput?.value) || 0),
+            weight: weighted && typeInput?.value !== "yesno" ? (parseFloat(minInput?.value) || 0) : 0,
           });
         }
       });
@@ -647,7 +819,7 @@ function renderAdminList() {
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Aggiungi Sotto-criterio`;
     addSubBtn.addEventListener("click", () => {
-      localSubs.push({ text: "", type: "normal", minThreshold: 0 });
+      localSubs.push({ text: "", type: "normal", minThreshold: 0, weight: 0 });
       rebuildSubRows();
       // focus new input
       const inputs = subList.querySelectorAll("input[type='text']");
@@ -666,7 +838,7 @@ function renderAdminList() {
 
       if (!newTitle) { showInlineMsg(msgEl, "Il titolo è obbligatorio", "err"); return; }
 
-      if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
+      if (!weighted && (isNaN(newThresh) || newThresh < 0 || newThresh > 5)) {
         showInlineMsg(msgEl, "La soglia deve essere tra 0 e 5", "err"); return;
       }
 
@@ -677,7 +849,7 @@ function renderAdminList() {
         title: newTitle,
         type: "normal",
         order: criteria.order ?? 0,
-        threshold: newThresh,
+        threshold: weighted ? 0 : newThresh,
       };
 
       const filteredSubs = localSubs
@@ -686,9 +858,15 @@ function renderAdminList() {
           text: sub.text.trim(),
           type: sub.type === "yesno" ? "yesno" : "normal",
           minThreshold: sub.type === "yesno" ? 0 : Math.max(0, Math.min(5, parseFloat(sub.minThreshold) || 0)),
+          weight: sub.type === "yesno" ? 0 : Math.max(0, parseFloat(sub.weight) || 0),
         }));
 
-      dataToSave.subCriteria = filteredSubs;
+      dataToSave.subCriteria = filteredSubs.map(sub => ({
+        text: sub.text,
+        type: sub.type,
+        minThreshold: weighted ? 0 : sub.minThreshold,
+        weight: weighted ? sub.weight : 0,
+      }));
 
       await saveCriteria(criteria.id, dataToSave, msgEl);
 
@@ -757,6 +935,7 @@ function showApp() {
  *   number (0–5)   — straight average of all sub-criteria scores
  */
 function averageScore(criteriaId, subCount) {
+  if (isWeightedPathway()) return null;
   const criteria = criteriaList.find(c => c.id === criteriaId);
   if (!criteria) return null;
 
@@ -782,19 +961,43 @@ function averageScore(criteriaId, subCount) {
   return avg;
 }
 
+function weightedSubtotal(criteriaId, subCount) {
+  const criteria = criteriaList.find(c => c.id === criteriaId);
+  if (!criteria) return null;
+
+  const rows = scores[criteriaId] || {};
+  let total = 0;
+
+  for (let i = 0; i < subCount; i++) {
+    const sub = normalizeSubCriterion(criteria.subCriteria?.[i]);
+    if (sub.type !== "normal") continue;
+
+    const entry = rows[i];
+    if (entry === undefined) return null;
+    total += (entry.score ?? 0) * (sub.weight ?? 0);
+  }
+
+  return total;
+}
+
+function getPathwayThresholdLabel() {
+  return isWeightedPathway() ? "Soglia complessiva" : "Soglia";
+}
+
 function normalizeSubCriterion(sub) {
   if (typeof sub === "string") {
-    return { text: sub, type: "normal", minThreshold: 0 };
+    return { text: sub, type: "normal", minThreshold: 0, weight: 0 };
   }
 
   if (!sub || typeof sub !== "object") {
-    return { text: "", type: "normal", minThreshold: 0 };
+    return { text: "", type: "normal", minThreshold: 0, weight: 0 };
   }
 
   return {
     text: sub.text || "",
     type: sub.type === "yesno" ? "yesno" : "normal",
     minThreshold: sub.type === "yesno" ? 0 : Math.max(0, Math.min(5, Number(sub.minThreshold) || 0)),
+    weight: sub.type === "yesno" ? 0 : Math.max(0, Number(sub.weight) || 0),
   };
 }
 
@@ -904,18 +1107,16 @@ function updateRowMinIndicators(criteriaId, subCount) {
 function updateBadges() {
   let allScored = true;
   let anyCriterionFailed = false;
+  let weightedOverallTotal = 0;
+  let anyYesNoFailedOverall = false;
+  const weighted = isWeightedPathway();
 
   criteriaList.forEach(criteria => {
     const badge = document.querySelector(`[data-badge="${criteria.id}"]`);
     if (!badge) return;
 
-    let pass = false;
-    const avg = averageScore(criteria.id, criteria.subCriteria.length);
-    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
-
     const rows = scores[criteria.id] || {};
     const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
-    const hasScoredSubs = countNormalSubCriteria(criteria) > 0;
     const hasPendingNormal = subCriteria.some((sub, idx) => sub.type === "normal" && rows[idx] === undefined);
     const hasPendingYesNo = subCriteria.some((sub, idx) => {
       if (sub.type !== "yesno") return false;
@@ -927,23 +1128,40 @@ function updateBadges() {
       allScored = false;
       badge.className = "badge pending";
       badge.textContent = "–";
+      badge.classList.toggle("hidden", weighted);
       updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
       return;
     }
 
+    const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
+    updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
+    anyYesNoFailedOverall = anyYesNoFailedOverall || anyYesNoFailed;
+
+    if (weighted) {
+      const subtotal = weightedSubtotal(criteria.id, criteria.subCriteria.length) ?? 0;
+      weightedOverallTotal += subtotal;
+      badge.classList.add("hidden");
+      const metaEl = document.querySelector(`[data-criteria-meta="${criteria.id}"]`);
+      if (metaEl) {
+        metaEl.textContent = `Totale pesato: ${subtotal.toFixed(2).replace(".", ",")}`;
+      }
+      return;
+    }
+
+    const avg = averageScore(criteria.id, criteria.subCriteria.length);
+    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
+    const hasScoredSubs = countNormalSubCriteria(criteria) > 0;
     const anyBelowMin = subCriteria.some((sub, idx) => {
       if (sub.type !== "normal") return false;
       const value = rows[idx]?.score ?? 0;
       return sub.minThreshold > 0 && value > 0 && value < sub.minThreshold;
     });
 
-    const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
-
     const meetsThreshold = !hasScoredSubs || avg >= criteria.threshold;
-    pass = !anyBelowMin && !anyYesNoFailed && meetsThreshold;
-    updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
+    const pass = !anyBelowMin && !anyYesNoFailed && meetsThreshold;
 
     if (!pass) anyCriterionFailed = true;
+    badge.classList.remove("hidden");
     badge.className = `badge ${pass ? "pass" : "fail"}`;
     badge.textContent = pass ? "SÌ" : "NO";
   });
@@ -955,7 +1173,9 @@ function updateBadges() {
     elOverallBadge.className = "badge pending";
     elOverallBadge.textContent = "–";
   } else {
-    const overallPass = !anyCriterionFailed;
+    const overallPass = weighted
+      ? !anyYesNoFailedOverall && weightedOverallTotal >= (currentPathwaySettings.overallThreshold ?? 0)
+      : !anyCriterionFailed;
     elOverallBadge.className = `badge ${overallPass ? "pass" : "fail"}`;
     elOverallBadge.textContent = overallPass ? "APPROVATO" : "ESCLUSO";
   }
@@ -1118,6 +1338,7 @@ function getEvaluationState() {
     source: "evalkit",
     version: 1,
     exportedAt: new Date().toISOString(),
+    pathway: selectedPathway,
     scores: normalizedScores,
   };
 }
@@ -1158,6 +1379,10 @@ function extractScoreEntries(data) {
 function restoreEvaluationState(state) {
   if (!state || typeof state !== "object" || !state.scores || typeof state.scores !== "object") {
     throw new Error("File JSON non valido");
+  }
+
+  if (state.pathway && state.pathway !== selectedPathway) {
+    throw new Error(`Il file appartiene a ${PATHWAY_CONFIG[state.pathway]?.label || state.pathway}. Seleziona prima la linea corretta.`);
   }
 
   const importedScores = state.scores;
@@ -1300,9 +1525,11 @@ function buildEvaluationPdf(jsPdfCtor) {
   y += 20;
 
   const overallText = `Risultato complessivo: ${overallSummary.label}`;
-  const overallMeta = overallSummary.hasMissingComments
-    ? "Sono presenti commenti obbligatori mancanti."
-    : "Tutti i criteri sono stati elaborati correttamente.";
+  const overallMeta = isWeightedPathway()
+    ? `Soglia complessiva: ${formatPdfAverage(currentPathwaySettings.overallThreshold ?? 0)}    Totale: ${formatPdfAverage(overallSummary.total ?? 0)}${overallSummary.hasMissingComments ? "    Sono presenti commenti obbligatori mancanti." : ""}`
+    : (overallSummary.hasMissingComments
+      ? "Sono presenti commenti obbligatori mancanti."
+      : "Tutti i criteri sono stati elaborati correttamente.");
 
   const overallBlockHeight =
     measureWrappedText(overallText, contentWidth, { fontSize: 13, lineHeight: 17 }).height +
@@ -1356,6 +1583,30 @@ function buildEvaluationPdf(jsPdfCtor) {
 }
 
 function getPdfCriterionSummary(criteria) {
+  if (isWeightedPathway()) {
+    const rows = scores[criteria.id] || {};
+    const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
+    const subtotal = weightedSubtotal(criteria.id, criteria.subCriteria.length);
+    const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
+    const hasPending = subCriteria.some((sub, idx) => {
+      if (sub.type === "yesno") {
+        const answer = rows[idx]?.answer;
+        return answer === null || answer === undefined;
+      }
+      return rows[idx] === undefined;
+    });
+
+    return {
+      subtotal,
+      pass: !hasPending && !anyYesNoFailed,
+      anyBelowMin: false,
+      anyYesNoFailed,
+      hasPending,
+      hasScoredSubs: countNormalSubCriteria(criteria) > 0,
+      label: hasPending ? "In sospeso" : "Totale aggiornato",
+    };
+  }
+
   const avg = averageScore(criteria.id, criteria.subCriteria.length);
   const rows = scores[criteria.id] || {};
   const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
@@ -1398,11 +1649,26 @@ function getPdfOverallSummary() {
   // Check if any criteria is pending
   const hasPending = summaries.some(summary => summary.hasPending);
 
-  // Check if any criteria failed
-  const hasFailure = summaries.some(summary => !summary.pass);
+  const weighted = isWeightedPathway();
+  const hasFailure = weighted
+    ? summaries.some(summary => summary.anyYesNoFailed)
+    : summaries.some(summary => !summary.pass);
 
   if (hasPending) {
     return { label: "In sospeso", pass: false, hasMissingComments };
+  }
+
+  if (weighted) {
+    const total = summaries.reduce((sum, summary) => sum + (summary.subtotal || 0), 0);
+    const threshold = currentPathwaySettings.overallThreshold ?? 0;
+    const pass = !hasFailure && total >= threshold;
+    return {
+      label: pass ? "APPROVATO" : "ESCLUSO",
+      pass,
+      hasMissingComments,
+      total,
+      threshold,
+    };
   }
 
   return {
@@ -1415,7 +1681,9 @@ function getPdfOverallSummary() {
 
 function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
   const titleHeight = measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
-  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
+  const metaText = isWeightedPathway()
+    ? `Totale pesato: ${formatPdfAverage(summary.subtotal)}    Stato: ${summary.label}`
+    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
   const metaHeight = measurePdfTextHeight(pdf, metaText, width, 10, 14);
   const noteLines = getPdfCriterionNotes(summary);
   const noteHeight = noteLines.length
@@ -1432,7 +1700,9 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   });
   let y = startY + measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
 
-  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
+  const metaText = isWeightedPathway()
+    ? `Totale pesato: ${formatPdfAverage(summary.subtotal)}    Stato: ${summary.label}`
+    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
   drawWrappedPdfText(pdf, metaText, x, y, width, {
     fontSize: 10,
     lineHeight: 14,
@@ -1651,7 +1921,9 @@ function getPdfScoreLabel(entry, sub) {
     return `Risposta: ${entry.answer === true ? "Sì" : (entry.answer === false ? "No" : "Non risposto")}`;
   }
   if (!entry.score) return "Punteggio: Non valutato";
-  return `Punteggio: ${entry.score}/5`;
+  return isWeightedPathway()
+    ? `Punteggio: ${entry.score}/5    Peso: ${formatPdfAverage(sub.weight ?? 0)}`
+    : `Punteggio: ${entry.score}/5`;
 }
 
 function getPdfCommentLabel(comment) {
@@ -1664,6 +1936,9 @@ function getPdfRowNotes(entry, criteria, subIdx) {
 
   if (sub.type === "normal" && sub.minThreshold > 0 && entry.score > 0 && entry.score < sub.minThreshold) {
     notes.push(`Sotto il minimo (${sub.minThreshold})`);
+  }
+  if (isWeightedPathway() && sub.type === "normal" && (sub.weight ?? 0) > 0 && entry.score > 0) {
+    notes.push(`Contributo pesato: ${formatPdfAverage((entry.score ?? 0) * (sub.weight ?? 0))}`);
   }
   if (sub.type === "yesno" && entry.answer === false) {
     notes.push("Risposta negativa: il criterio non è superato");
@@ -1687,7 +1962,7 @@ async function persistCriteriaOrder() {
 
   criteriaList.forEach((criteria, index) => {
     criteria.order = index;
-    batch.update(doc(db, "criteria", criteria.id), { order: index });
+    batch.update(getCriteriaDocRef(criteria.id), { order: index });
   });
 
   await batch.commit();
@@ -1753,6 +2028,7 @@ function setupSortable(container, itemSelector, onReorder) {
 // ─────────────────────────────────────────────────────────────
 function renderEvaluator(criteriaArr) {
   elCriteriaContainer.innerHTML = "";
+  const weighted = isWeightedPathway();
 
   criteriaArr.forEach((criteria, cardIndex) => {
     const card = document.createElement("div");
@@ -1770,7 +2046,10 @@ function renderEvaluator(criteriaArr) {
 
     const threshEl = document.createElement("div");
     threshEl.className = "card-threshold";
-    threshEl.textContent = `Soglia: ${criteria.threshold}`;
+    threshEl.dataset.criteriaMeta = criteria.id;
+    threshEl.textContent = weighted
+      ? "Totale pesato: 0,00"
+      : `Soglia: ${criteria.threshold}`;
     titleWrap.appendChild(threshEl);
 
     titleWrap.insertBefore(titleEl, titleWrap.firstChild);
@@ -1779,6 +2058,7 @@ function renderEvaluator(criteriaArr) {
     badge.className = "badge pending";
     badge.textContent = "–";
     badge.dataset.badge = criteria.id;
+    badge.classList.toggle("hidden", weighted);
 
     header.appendChild(titleWrap);
     header.appendChild(badge);
@@ -1816,7 +2096,9 @@ function renderEvaluator(criteriaArr) {
 
       const text = document.createElement("span");
       text.className = "subcriteria-text";
-      text.textContent = sub.text;
+      text.textContent = isWeightedPathway() && sub.type === "normal"
+        ? `${sub.text} (Peso: ${Number(sub.weight ?? 0).toFixed(2).replace(".", ",")})`
+        : sub.text;
 
       const controls = document.createElement("div");
       controls.className = "row-controls";
@@ -1958,8 +2240,18 @@ document.addEventListener("keydown", e => {
 
 // Add criteria
 elBtnAddCriteria.addEventListener("click", addCriteria);
-elNewTitle.addEventListener("keydown", e => { if (e.key === "Enter") elNewThreshold.focus(); });
+elNewTitle.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  if (isWeightedPathway()) {
+    addCriteria();
+  } else {
+    elNewThreshold.focus();
+  }
+});
 elNewThreshold.addEventListener("keydown", e => { if (e.key === "Enter") addCriteria(); });
+elPathwaySelect?.addEventListener("change", (e) => {
+  handlePathwayChange(e.target.value);
+});
 
 // ─────────────────────────────────────────────────────────────
 // Auth State Observer
