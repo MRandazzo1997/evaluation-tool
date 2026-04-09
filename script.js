@@ -34,7 +34,7 @@ const auth = getAuth(app);
 // ─────────────────────────────────────────────────────────────
 // App State
 // ─────────────────────────────────────────────────────────────
-const scores = {};          // scores[criteriaId][subIndex] = { score: 0-5, comment: string }
+const scores = {};          // scores[criteriaId][subIndex] = { score?: 0-5, answer?: boolean|null, comment: string }
 let criteriaList = [];      // cached from Firestore
 let currentUser = null;    // Firebase User | null
 let drawerOpen = false;
@@ -72,7 +72,6 @@ const elBtnCloseDrawer = $("btn-close-drawer");
 const elDrawerResizeHandle = $("drawer-resize-handle");
 
 const elNewTitle = $("new-title");
-const elNewType = $("new-type");
 const elNewThreshold = $("new-threshold");
 const elBtnAddCriteria = $("btn-add-criteria");
 const elAddError = $("add-error");
@@ -271,26 +270,24 @@ async function loadCriteria() {
 
     criteriaList = snapshot.docs.map(d => {
       const data = d.data();
-      const type = data.type || "normal";
+      const rawType = data.type || "normal";
+      let normalizedSubCriteria = (data.subCriteria || []).map(normalizeSubCriterion);
 
-      let normalizedSubCriteria = [];
-      if (type === "normal") {
-        const rawSubCriteria = data.subCriteria || [];
-        normalizedSubCriteria = rawSubCriteria.map(sub => {
-          if (typeof sub === 'string') {
-            return { text: sub, minThreshold: 0 };
-          }
-          return {
-            text: sub.text || '',
-            minThreshold: sub.minThreshold ?? 0,
-          };
-        });
+      // Backward compatibility: old yes/no criteria become a standard
+      // criterion with one yes/no sub-criterion.
+      if (rawType === "yesno" && normalizedSubCriteria.length === 0) {
+        normalizedSubCriteria = [{
+          text: data.title || "Domanda Sì/No",
+          type: "yesno",
+          minThreshold: 0,
+        }];
       }
 
       return {
         id: d.id,
         ...data,
-        type,
+        type: "normal",
+        threshold: Number.isFinite(Number(data.threshold)) ? Number(data.threshold) : 0,
         subCriteria: normalizedSubCriteria,
       };
     });
@@ -324,7 +321,6 @@ async function loadCriteria() {
 
 async function addCriteria() {
   const title = elNewTitle.value.trim();
-  const type = elNewType.value; // "normal" or "yesno"
   const threshold = parseFloat(elNewThreshold.value);
 
   hideError(elAddError);
@@ -334,12 +330,9 @@ async function addCriteria() {
     return;
   }
 
-  // For "normal" type, threshold is required. For "yesno", it's ignored.
-  if (type === "normal") {
-    if (isNaN(threshold) || threshold < 0 || threshold > 5) {
-      showError(elAddError, "La soglia deve essere un numero tra 0 e 5.");
-      return;
-    }
+  if (isNaN(threshold) || threshold < 0 || threshold > 5) {
+    showError(elAddError, "La soglia deve essere un numero tra 0 e 5.");
+    return;
   }
 
   elBtnAddCriteria.disabled = true;
@@ -352,20 +345,15 @@ async function addCriteria() {
 
     const newCriteria = {
       title,
-      type: type || "normal",
-      threshold: type === "normal" ? threshold : 0,
+      type: "normal",
+      threshold,
       order: newOrder,
+      subCriteria: [],
     };
-
-    // Only include subCriteria for normal criteria
-    if (type === "normal") {
-      newCriteria.subCriteria = [];
-    }
 
     await addDoc(collection(db, "criteria"), newCriteria);
 
     elNewTitle.value = "";
-    elNewType.value = "normal";
     elNewThreshold.value = "";
     await loadCriteria();
   } catch (err) {
@@ -430,7 +418,6 @@ function renderAdminList() {
   }
 
   criteriaList.forEach(criteria => {
-    const type = criteria.type || "normal";
     const card = document.createElement("div");
     card.className = "admin-card";
     card.dataset.criteriaId = criteria.id;
@@ -464,24 +451,6 @@ function renderAdminList() {
     const fieldsRow = document.createElement("div");
     fieldsRow.className = "admin-card-fields";
 
-    // Type field group
-    const typeGroup = document.createElement("div");
-    typeGroup.className = "form-field-group";
-    const typeLabel = document.createElement("label");
-    typeLabel.className = "field-label";
-    typeLabel.textContent = "Tipo";
-
-    const typeSelect = document.createElement("select");
-    typeSelect.className = "field";
-    typeSelect.value = type;
-    typeSelect.innerHTML = `
-      <option value="normal">Normale</option>
-      <option value="yesno">Sì/No</option>
-    `;
-
-    typeGroup.appendChild(typeLabel);
-    typeGroup.appendChild(typeSelect);
-
     // Title field group
     const titleGroup = document.createElement("div");
     titleGroup.className = "form-field-group";
@@ -513,22 +482,10 @@ function renderAdminList() {
     threshInput.step = "0.1";
     threshInput.min = "0";
     threshInput.max = "5";
-    if (type === "yesno") threshGroup.style.display = "none";
 
     threshGroup.appendChild(threshLabel);
     threshGroup.appendChild(threshInput);
 
-    // Update threshold visibility when type changes
-    typeSelect.addEventListener("change", (e) => {
-      const selectedType = e.target.value;
-      threshGroup.style.display = selectedType === "yesno" ? "none" : "";
-      // Show/hide sub-section
-      if (subSection) {
-        subSection.style.display = selectedType === "yesno" ? "none" : "";
-      }
-    });
-
-    fieldsRow.appendChild(typeGroup);
     fieldsRow.appendChild(titleGroup);
     fieldsRow.appendChild(threshGroup);
 
@@ -564,7 +521,6 @@ function renderAdminList() {
     // ── Sub-criteria section ───────────────────────────────
     const subSection = document.createElement("div");
     subSection.className = "admin-sub-section";
-    if (type === "yesno") subSection.style.display = "none";
 
     const subLabel = document.createElement("div");
     subLabel.className = "sub-section-label";
@@ -574,16 +530,7 @@ function renderAdminList() {
     subList.className = "admin-sub-list";
 
     // local copy of sub-criteria to manipulate before saving
-    // Normalize old format (strings) to new format (objects with thresholds)
-    let localSubs = (criteria.subCriteria || []).map(sub => {
-      if (typeof sub === 'string') {
-        return { text: sub, minThreshold: 0 };
-      }
-      return {
-        text: sub.text || '',
-        minThreshold: sub.minThreshold ?? 0,
-      };
-    });
+    let localSubs = (criteria.subCriteria || []).map(normalizeSubCriterion);
 
     function rebuildSubRows() {
       subList.innerHTML = "";
@@ -616,6 +563,14 @@ function renderAdminList() {
         input.placeholder = `Sotto-criterio ${idx + 1}`;
         input.addEventListener("input", () => { localSubs[idx].text = input.value; });
 
+        const subTypeSelect = document.createElement("select");
+        subTypeSelect.className = "field field--subtype";
+        subTypeSelect.innerHTML = `
+          <option value="normal">Normale</option>
+          <option value="yesno">Sì/No</option>
+        `;
+        subTypeSelect.value = sub.type;
+
         // Minimum threshold input
         const minThreshInput = document.createElement("input");
         minThreshInput.type = "number";
@@ -628,6 +583,15 @@ function renderAdminList() {
         minThreshInput.title = "Soglia minima per questo sotto-criterio";
         minThreshInput.addEventListener("input", () => {
           localSubs[idx].minThreshold = parseFloat(minThreshInput.value) || 0;
+        });
+        minThreshInput.style.display = sub.type === "yesno" ? "none" : "";
+
+        subTypeSelect.addEventListener("change", () => {
+          localSubs[idx].type = subTypeSelect.value === "yesno" ? "yesno" : "normal";
+          if (localSubs[idx].type === "yesno") {
+            localSubs[idx].minThreshold = 0;
+          }
+          rebuildSubRows();
         });
 
         const removeBtn = document.createElement("button");
@@ -642,6 +606,7 @@ function renderAdminList() {
 
         row.appendChild(subDragHandle);
         row.appendChild(input);
+        row.appendChild(subTypeSelect);
         row.appendChild(minThreshInput);
         row.appendChild(removeBtn);
         subList.appendChild(row);
@@ -659,13 +624,14 @@ function renderAdminList() {
 
       const updatedSubs = [];
       rows.forEach(row => {
-        const inputs = row.querySelectorAll("input");
-        const textInput = inputs[0];
-        const minInput = inputs[1];
+        const textInput = row.querySelector('input[type="text"]');
+        const typeInput = row.querySelector("select");
+        const minInput = row.querySelector('input[type="number"]');
         if (textInput && textInput.value.trim()) {
           updatedSubs.push({
             text: textInput.value.trim(),
-            minThreshold: parseFloat(minInput?.value) || 0,
+            type: typeInput?.value === "yesno" ? "yesno" : "normal",
+            minThreshold: typeInput?.value === "yesno" ? 0 : (parseFloat(minInput?.value) || 0),
           });
         }
       });
@@ -681,7 +647,7 @@ function renderAdminList() {
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Aggiungi Sotto-criterio`;
     addSubBtn.addEventListener("click", () => {
-      localSubs.push({ text: "", minThreshold: 0 });
+      localSubs.push({ text: "", type: "normal", minThreshold: 0 });
       rebuildSubRows();
       // focus new input
       const inputs = subList.querySelectorAll("input[type='text']");
@@ -696,16 +662,12 @@ function renderAdminList() {
     // ── Wire save / delete ─────────────────────────────────
     saveBtn.addEventListener("click", async () => {
       const newTitle = titleInput.value.trim();
-      const newType = typeSelect.value;
       const newThresh = parseFloat(threshInput.value);
 
       if (!newTitle) { showInlineMsg(msgEl, "Il titolo è obbligatorio", "err"); return; }
 
-      // Validate threshold only for normal criteria
-      if (newType === "normal") {
-        if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
-          showInlineMsg(msgEl, "La soglia deve essere tra 0 e 5", "err"); return;
-        }
+      if (isNaN(newThresh) || newThresh < 0 || newThresh > 5) {
+        showInlineMsg(msgEl, "La soglia deve essere tra 0 e 5", "err"); return;
       }
 
       saveBtn.disabled = true;
@@ -713,26 +675,20 @@ function renderAdminList() {
 
       let dataToSave = {
         title: newTitle,
-        type: newType,
+        type: "normal",
         order: criteria.order ?? 0,
+        threshold: newThresh,
       };
 
-      if (newType === "normal") {
-        // Filter out empty sub-criteria and ensure they have the proper structure
-        const filteredSubs = localSubs
-          .filter(sub => sub.text && sub.text.trim())
-          .map(sub => ({
-            text: sub.text.trim(),
-            minThreshold: Math.max(0, Math.min(5, parseFloat(sub.minThreshold) || 0)),
-          }));
+      const filteredSubs = localSubs
+        .filter(sub => sub.text && sub.text.trim())
+        .map(sub => ({
+          text: sub.text.trim(),
+          type: sub.type === "yesno" ? "yesno" : "normal",
+          minThreshold: sub.type === "yesno" ? 0 : Math.max(0, Math.min(5, parseFloat(sub.minThreshold) || 0)),
+        }));
 
-        dataToSave.threshold = newThresh;
-        dataToSave.subCriteria = filteredSubs;
-      } else {
-        // For yesno criteria
-        dataToSave.threshold = 0;
-        // Don't set subCriteria or set it to undefined
-      }
+      dataToSave.subCriteria = filteredSubs;
 
       await saveCriteria(criteria.id, dataToSave, msgEl);
 
@@ -801,11 +757,16 @@ function showApp() {
  *   number (0–5)   — straight average of all sub-criteria scores
  */
 function averageScore(criteriaId, subCount) {
-  if (subCount === 0) return null;
+  const criteria = criteriaList.find(c => c.id === criteriaId);
+  if (!criteria) return null;
+
   const rows = scores[criteriaId] || {};
   const values = [];
 
   for (let i = 0; i < subCount; i++) {
+    const sub = normalizeSubCriterion(criteria.subCriteria?.[i]);
+    if (sub.type !== "normal") continue;
+
     const entry = rows[i];
     if (entry === undefined) {
       console.log(`[averageScore] ${criteriaId}[${i}] is undefined — incomplete`);
@@ -814,25 +775,84 @@ function averageScore(criteriaId, subCount) {
     values.push(entry.score ?? 0);
   }
 
+  if (values.length === 0) return 0;
+
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
   console.log(`[averageScore] ${criteriaId} scores:`, values, '→ avg:', avg);
   return avg;
 }
 
+function normalizeSubCriterion(sub) {
+  if (typeof sub === "string") {
+    return { text: sub, type: "normal", minThreshold: 0 };
+  }
+
+  if (!sub || typeof sub !== "object") {
+    return { text: "", type: "normal", minThreshold: 0 };
+  }
+
+  return {
+    text: sub.text || "",
+    type: sub.type === "yesno" ? "yesno" : "normal",
+    minThreshold: sub.type === "yesno" ? 0 : Math.max(0, Math.min(5, Number(sub.minThreshold) || 0)),
+  };
+}
+
+function getSubCriterion(criteriaId, subIndex) {
+  const criteria = criteriaList.find(c => c.id === criteriaId);
+  return normalizeSubCriterion(criteria?.subCriteria?.[subIndex]);
+}
+
+function countNormalSubCriteria(criteria) {
+  return (criteria?.subCriteria || []).map(normalizeSubCriterion).filter(sub => sub.type === "normal").length;
+}
+
+function createDefaultEntry(subType = "normal") {
+  return subType === "yesno"
+    ? { answer: null, comment: "" }
+    : { score: 0, comment: "" };
+}
+
 function ensureScoreEntry(criteriaId, subIndex) {
+  const sub = getSubCriterion(criteriaId, subIndex);
   if (!scores[criteriaId]) scores[criteriaId] = {};
   if (!scores[criteriaId][subIndex]) {
-    scores[criteriaId][subIndex] = { score: 0, comment: "" };
+    scores[criteriaId][subIndex] = createDefaultEntry(sub.type);
+  }
+  if (sub.type === "yesno") {
+    scores[criteriaId][subIndex].answer = normalizeYesNoAnswer(scores[criteriaId][subIndex].answer);
+    if (typeof scores[criteriaId][subIndex].comment !== "string") {
+      scores[criteriaId][subIndex].comment = "";
+    }
+  } else {
+    const entryScore = Number(scores[criteriaId][subIndex].score);
+    scores[criteriaId][subIndex].score = Number.isFinite(entryScore) ? entryScore : 0;
+    if (typeof scores[criteriaId][subIndex].comment !== "string") {
+      scores[criteriaId][subIndex].comment = "";
+    }
   }
   return scores[criteriaId][subIndex];
 }
 
-function isCommentRequired() {
-  return false;
+function isCommentRequired(criteriaId, subIndex, entry = null) {
+  const sub = getSubCriterion(criteriaId, subIndex);
+  const currentEntry = entry || ensureScoreEntry(criteriaId, subIndex);
+
+  if (sub.type === "yesno") {
+    return currentEntry.answer === true || currentEntry.answer === false;
+  }
+
+  return (currentEntry.score ?? 0) > 0;
 }
 
 function checkMissingComments() {
-  return false;
+  return criteriaList.some(criteria => {
+    const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
+    return subCriteria.some((sub, idx) => {
+      const entry = ensureScoreEntry(criteria.id, idx);
+      return isCommentRequired(criteria.id, idx, entry) && !String(entry.comment || "").trim();
+    });
+  });
 }
 
 function updateCommentState(rowEl, entry) {
@@ -840,7 +860,14 @@ function updateCommentState(rowEl, entry) {
 
   if (!textarea) return;
 
-  textarea.required = false;
+  const cid = rowEl.dataset.criteriaId;
+  const idx = parseInt(rowEl.dataset.subIndex, 10);
+  const required = isCommentRequired(cid, idx, entry);
+  const missing = required && !textarea.value.trim();
+
+  textarea.required = required;
+  textarea.classList.toggle("field-error", missing);
+  rowEl.classList.toggle("row--comment-missing", missing);
 }
 
 /**
@@ -863,8 +890,8 @@ function updateRowMinIndicators(criteriaId, subCount) {
     if (!rowEl) continue;
 
     const entry = rows[i] || { score: 0, comment: "" };
-    const sub = criteria.subCriteria[i];
-    const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+    const sub = normalizeSubCriterion(criteria.subCriteria[i]);
+    const minThreshold = sub.type === "normal" ? (sub.minThreshold ?? 0) : 0;
     const v = entry.score ?? 0;
 
     const belowMin = minThreshold > 0 && v > 0 && v < minThreshold;
@@ -879,51 +906,46 @@ function updateBadges() {
   let anyCriterionFailed = false;
 
   criteriaList.forEach(criteria => {
-    const type = criteria.type || "normal";
     const badge = document.querySelector(`[data-badge="${criteria.id}"]`);
     if (!badge) return;
 
     let pass = false;
+    const avg = averageScore(criteria.id, criteria.subCriteria.length);
+    console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
 
-    if (type === "normal") {
-      const avg = averageScore(criteria.id, criteria.subCriteria.length);
-      console.log(`[updateBadges] "${criteria.title}" avg=${avg} threshold=${criteria.threshold}`);
+    const rows = scores[criteria.id] || {};
+    const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
+    const hasScoredSubs = countNormalSubCriteria(criteria) > 0;
+    const hasPendingNormal = subCriteria.some((sub, idx) => sub.type === "normal" && rows[idx] === undefined);
+    const hasPendingYesNo = subCriteria.some((sub, idx) => {
+      if (sub.type !== "yesno") return false;
+      const answer = rows[idx]?.answer;
+      return answer === null || answer === undefined;
+    });
 
-      if (avg === null) {
-        allScored = false;
-        badge.className = "badge pending";
-        badge.textContent = "–";
-        return;
-      }
-
-      // Step 1: fail immediately if any sub-criteria is below its per-sub-criteria minimum.
-      const rows = scores[criteria.id] || {};
-      const anyBelowMin = (criteria.subCriteria || []).some((sub, idx) => {
-        const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
-        const value = rows[idx]?.score ?? 0;
-        return minThreshold > 0 && value > 0 && value < minThreshold;
-      });
-
-      // Step 2: compare average to the criteria threshold.
-      pass = !anyBelowMin && avg >= criteria.threshold;
-
-      // Update per-row visual indicator for scores below the per-sub-criteria minimum
+    if (hasPendingNormal || hasPendingYesNo) {
+      allScored = false;
+      badge.className = "badge pending";
+      badge.textContent = "–";
       updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
-    } else if (type === "yesno") {
-      const entry = scores[criteria.id];
-      if (entry?.answer === null || entry?.answer === undefined) {
-        allScored = false;
-        badge.className = "badge pending";
-        badge.textContent = "–";
-        return;
-      }
-      pass = entry.answer === true;
-      console.log(`[updateBadges] "${criteria.title}" yesno answer=${entry.answer} pass=${pass}`);
+      return;
     }
+
+    const anyBelowMin = subCriteria.some((sub, idx) => {
+      if (sub.type !== "normal") return false;
+      const value = rows[idx]?.score ?? 0;
+      return sub.minThreshold > 0 && value > 0 && value < sub.minThreshold;
+    });
+
+    const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
+
+    const meetsThreshold = !hasScoredSubs || avg >= criteria.threshold;
+    pass = !anyBelowMin && !anyYesNoFailed && meetsThreshold;
+    updateRowMinIndicators(criteria.id, criteria.subCriteria.length);
 
     if (!pass) anyCriterionFailed = true;
     badge.className = `badge ${pass ? "pass" : "fail"}`;
-    badge.textContent = pass ? "Superato" : "Non Superato";
+    badge.textContent = pass ? "SÌ" : "NO";
   });
 
   if (criteriaList.length === 0) {
@@ -935,7 +957,7 @@ function updateBadges() {
   } else {
     const overallPass = !anyCriterionFailed;
     elOverallBadge.className = `badge ${overallPass ? "pass" : "fail"}`;
-    elOverallBadge.textContent = overallPass ? "Superato" : "Non Superato";
+    elOverallBadge.textContent = overallPass ? "APPROVATO" : "ESCLUSO";
   }
 }
 
@@ -949,6 +971,9 @@ function updateBadges() {
  * score 0 = not evaluated (cleared), 1–5 = rated.
  */
 function applyRowState(rowEl, score) {
+  const mode = rowEl.dataset.subType || "normal";
+  if (mode !== "normal") return;
+
   // Update circles
   rowEl.querySelectorAll(".circle").forEach(c => {
     c.classList.toggle("filled", parseInt(c.dataset.value, 10) <= score);
@@ -1017,22 +1042,21 @@ function onCommentInput(e) {
   updateBadges();
 }
 
-function onYesNoClick(e) {
+function onSubYesNoClick(e) {
   const btn = e.currentTarget;
-  const cid = btn.dataset.criteriaId;
+  const row = btn.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
   const answer = btn.dataset.answer === 'true';
 
-  if (!scores[cid]) {
-    scores[cid] = { answer: null };
-  }
-  scores[cid].answer = answer;
+  const entry = ensureScoreEntry(cid, idx);
+  entry.answer = answer;
 
-  console.log(`[onYesNoClick] ${cid} → ${answer}`, scores[cid]);
+  console.log(`[onSubYesNoClick] ${cid}[${idx}] → ${answer}`, scores[cid]);
 
   // Update button states
-  const card = btn.closest(".criteria-card");
-  const yesBtn = card.querySelector('[data-answer="true"]');
-  const noBtn = card.querySelector('[data-answer="false"]');
+  const yesBtn = row.querySelector('[data-answer="true"]');
+  const noBtn = row.querySelector('[data-answer="false"]');
 
   yesBtn.classList.toggle("active", answer === true);
   noBtn.classList.toggle("active", answer === false);
@@ -1072,21 +1096,21 @@ function getEvaluationState() {
     const data = scores[criteriaId];
     if (!data || typeof data !== "object") return;
 
-    if (data.answer !== undefined) {
-      normalizedScores[criteriaId] = { answer: data.answer };
-      return;
-    }
-
     const rowKeys = Object.keys(data)
       .filter(key => String(Number(key)) === key)
       .sort((a, b) => Number(a) - Number(b));
 
     normalizedScores[criteriaId] = rowKeys.map(key => {
       const entry = data[key];
-      return {
-        score: Number(entry.score) || 0,
+      const normalizedEntry = {
         comment: typeof entry.comment === "string" ? entry.comment : "",
       };
+      if (entry.answer !== undefined) {
+        normalizedEntry.answer = normalizeYesNoAnswer(entry.answer);
+      } else {
+        normalizedEntry.score = Number(entry.score) || 0;
+      }
+      return normalizedEntry;
     });
   });
 
@@ -1120,6 +1144,9 @@ function normalizeYesNoAnswer(value) {
 function extractScoreEntries(data) {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== "object") return [];
+  if (data.answer !== undefined || data.score !== undefined || data.comment !== undefined) {
+    return [data];
+  }
 
   const numericKeys = Object.keys(data)
     .filter(key => String(Number(key)) === key)
@@ -1140,21 +1167,23 @@ function restoreEvaluationState(state) {
     if (!criteria) return;
 
     const data = importedScores[criteriaId];
-
-    if (criteria.type === "yesno") {
-      const answer = normalizeYesNoAnswer(data?.answer);
-      scores[criteriaId] = { answer };
-      return;
-    }
-
     const entries = extractScoreEntries(data);
     if (!entries.length) return;
 
     scores[criteriaId] = {};
     entries.forEach((entry, index) => {
       if (typeof entry !== "object" || entry === null) return;
-      const score = Number(entry.score);
       const comment = typeof entry.comment === "string" ? entry.comment : "";
+      const sub = normalizeSubCriterion(criteria.subCriteria?.[index]);
+      if (sub.type === "yesno") {
+        scores[criteriaId][index] = {
+          answer: normalizeYesNoAnswer(entry.answer),
+          comment,
+        };
+        return;
+      }
+
+      const score = Number(entry.score);
       if (!Number.isFinite(score) || score < 0 || score > 5) return;
       scores[criteriaId][index] = { score, comment };
     });
@@ -1298,42 +1327,23 @@ function buildEvaluationPdf(jsPdfCtor) {
   y += sectionGap;
 
   criteriaList.forEach((criteria, criteriaIndex) => {
-    const type = criteria.type || "normal";
     const criterionSummary = getPdfCriterionSummary(criteria);
     const headerHeight = getPdfCriterionHeaderHeight(pdf, criteria, criterionSummary, contentWidth);
+    const firstRow = (criteria.subCriteria || [])[0];
+    const firstRowHeight = firstRow
+      ? getPdfRowHeight(pdf, criteria, 0, firstRow, contentWidth)
+      : 0;
 
-    if (type === "normal") {
-      const firstRow = (criteria.subCriteria || [])[0];
-      const firstRowHeight = firstRow
-        ? getPdfRowHeight(pdf, criteria, 0, firstRow, contentWidth)
-        : 0;
+    ensureSpace(headerHeight + firstRowHeight + 8);
+    y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
 
-      ensureSpace(headerHeight + firstRowHeight + 8);
-      y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
-
-      (criteria.subCriteria || []).forEach((sub, subIdx) => {
-        const rowHeight = getPdfRowHeight(pdf, criteria, subIdx, sub, contentWidth);
-        ensureSpace(rowHeight + 6, (nextY) =>
-          drawPdfCriterionContinuationHeader(pdf, criteria, marginX, nextY, contentWidth)
-        );
-        y = drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, marginX, y, contentWidth);
-      });
-    } else if (type === "yesno") {
-      ensureSpace(headerHeight + 40);
-      y = drawPdfCriterionHeader(pdf, criteria, criterionSummary, marginX, y, contentWidth);
-
-      const entry = scores[criteria.id];
-      const answer = entry?.answer;
-      const answerText = answer === true ? "Sì" : (answer === false ? "No" : "Non risposto");
-      const answerColor = answer === true ? [26, 122, 74] : (answer === false ? [179, 45, 45] : [112, 110, 104]);
-
-      y += 8;
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(11);
-      pdf.setTextColor(...answerColor);
-      pdf.text(`Risposta: ${answerText}`, marginX + 12, y);
-      y += 16;
-    }
+    (criteria.subCriteria || []).forEach((sub, subIdx) => {
+      const rowHeight = getPdfRowHeight(pdf, criteria, subIdx, sub, contentWidth);
+      ensureSpace(rowHeight + 6, (nextY) =>
+        drawPdfCriterionContinuationHeader(pdf, criteria, marginX, nextY, contentWidth)
+      );
+      y = drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, marginX, y, contentWidth);
+    });
 
     if (criteriaIndex < criteriaList.length - 1) {
       y += 4;
@@ -1346,34 +1356,33 @@ function buildEvaluationPdf(jsPdfCtor) {
 }
 
 function getPdfCriterionSummary(criteria) {
-  const type = criteria.type || "normal";
-
-  if (type === "yesno") {
-    const entry = scores[criteria.id];
-    const answer = entry?.answer;
-    const pass = answer === true;
-    return {
-      answer,
-      pass,
-      label: answer === null || answer === undefined ? "In sospeso" : (pass ? "Sì" : "No"),
-    };
-  }
-
-  // Normal criteria
   const avg = averageScore(criteria.id, criteria.subCriteria.length);
   const rows = scores[criteria.id] || {};
-  const anyBelowMin = (criteria.subCriteria || []).some((sub, idx) => {
-    const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+  const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
+  const hasScoredSubs = countNormalSubCriteria(criteria) > 0;
+  const anyBelowMin = subCriteria.some((sub, idx) => {
     const value = rows[idx]?.score ?? 0;
-    return minThreshold > 0 && value > 0 && value < minThreshold;
+    return sub.type === "normal" && sub.minThreshold > 0 && value > 0 && value < sub.minThreshold;
   });
-  const pass = avg !== null && !anyBelowMin && avg >= criteria.threshold;
+  const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
+  const hasPending = subCriteria.some((sub, idx) => {
+    if (sub.type === "yesno") {
+      const answer = rows[idx]?.answer;
+      return answer === null || answer === undefined;
+    }
+    return rows[idx] === undefined;
+  });
+  const meetsThreshold = !hasScoredSubs || avg >= criteria.threshold;
+  const pass = !hasPending && !anyBelowMin && !anyYesNoFailed && meetsThreshold;
 
   return {
     avg,
+    hasScoredSubs,
     pass,
     anyBelowMin,
-    label: avg === null ? "In sospeso" : (pass ? "Superato" : "Non Superato"),
+    anyYesNoFailed,
+    hasPending,
+    label: hasPending ? "In sospeso" : (pass ? "SÌ" : "NO"),
   };
 }
 
@@ -1384,43 +1393,33 @@ function getPdfOverallSummary() {
   }
 
   const summaries = criteriaList.map(getPdfCriterionSummary);
+  const hasMissingComments = checkMissingComments();
 
   // Check if any criteria is pending
-  const hasPending = summaries.some(summary => {
-    const type = summary.avg === undefined ? "yesno" : "normal";
-    if (type === "yesno") {
-      return summary.answer === null || summary.answer === undefined;
-    }
-    return summary.avg === null;
-  });
+  const hasPending = summaries.some(summary => summary.hasPending);
 
   // Check if any criteria failed
   const hasFailure = summaries.some(summary => !summary.pass);
 
   if (hasPending) {
-    return { label: "In sospeso", pass: false, hasMissingComments: false };
+    return { label: "In sospeso", pass: false, hasMissingComments };
   }
 
   return {
-    label: hasFailure ? "Non Superato" : "Superato",
+    label: hasFailure ? "ESCLUSO" : "APPROVATO",
     pass: !hasFailure,
-    hasMissingComments: false,
+    hasMissingComments,
   };
 }
 
 
 function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
   const titleHeight = measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
-  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.avg)}    Stato: ${summary.label}`;
+  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
   const metaHeight = measurePdfTextHeight(pdf, metaText, width, 10, 14);
-  const noteHeight = summary.anyBelowMin
-    ? measurePdfTextHeight(
-      pdf,
-      "Almeno un sotto-criterio non ha raggiunto il minimo richiesto.",
-      width,
-      9,
-      13
-    )
+  const noteLines = getPdfCriterionNotes(summary);
+  const noteHeight = noteLines.length
+    ? measurePdfTextHeight(pdf, noteLines.join("\n"), width, 9, 13)
     : 0;
   return titleHeight + metaHeight + noteHeight + 18;
 }
@@ -1433,7 +1432,7 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   });
   let y = startY + measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
 
-  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.avg)}    Stato: ${summary.label}`;
+  const metaText = `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
   drawWrappedPdfText(pdf, metaText, x, y, width, {
     fontSize: 10,
     lineHeight: 14,
@@ -1441,8 +1440,9 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   });
   y += measurePdfTextHeight(pdf, metaText, width, 10, 14);
 
-  if (summary.anyBelowMin) {
-    const noteText = "Almeno un sotto-criterio non ha raggiunto il minimo richiesto.";
+  const noteLines = getPdfCriterionNotes(summary);
+  if (noteLines.length) {
+    const noteText = noteLines.join("\n");
     drawWrappedPdfText(pdf, noteText, x, y, width, {
       fontSize: 9,
       lineHeight: 13,
@@ -1467,10 +1467,11 @@ function drawPdfCriterionContinuationHeader(pdf, criteria, x, startY, width) {
 
 function getPdfRowHeight(pdf, criteria, subIdx, sub, width) {
   const entry = ensureScoreEntry(criteria.id, subIdx);
-  const noteLines = getPdfRowNotes(entry.score, criteria, subIdx);
-  const subLabel = typeof sub === 'object' ? sub.text : String(sub);
+  const normalizedSub = normalizeSubCriterion(sub);
+  const noteLines = getPdfRowNotes(entry, criteria, subIdx);
+  const subLabel = normalizedSub.text;
   const titleHeight = measurePdfTextHeight(pdf, `${subIdx + 1}. ${subLabel}`, width, 11, 15, "bold");
-  const scoreHeight = measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
+  const scoreHeight = measurePdfTextHeight(pdf, getPdfScoreLabel(entry, normalizedSub), width, 10, 13);
   const notesHeight = noteLines.length
     ? measurePdfTextHeight(pdf, noteLines.join("  |  "), width, 9, 12)
     : 0;
@@ -1490,7 +1491,8 @@ function getPdfRowHeight(pdf, criteria, subIdx, sub, width) {
 function drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, x, startY, width) {
   const entry = ensureScoreEntry(criteria.id, subIdx);
   let y = startY;
-  const subLabel = typeof sub === 'object' ? sub.text : String(sub);
+  const normalizedSub = normalizeSubCriterion(sub);
+  const subLabel = normalizedSub.text;
 
   const title = `${subIdx + 1}. ${subLabel}`;
   drawWrappedPdfText(pdf, title, x, y, width, {
@@ -1500,14 +1502,14 @@ function drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, x, startY, width) {
   });
   y += measurePdfTextHeight(pdf, title, width, 11, 15, "bold");
 
-  drawWrappedPdfText(pdf, getPdfScoreLabel(entry.score), x, y, width, {
+  drawWrappedPdfText(pdf, getPdfScoreLabel(entry, normalizedSub), x, y, width, {
     fontSize: 10,
     lineHeight: 13,
     color: [87, 83, 78],
   });
-  y += measurePdfTextHeight(pdf, getPdfScoreLabel(entry.score), width, 10, 13);
+  y += measurePdfTextHeight(pdf, getPdfScoreLabel(entry, normalizedSub), width, 10, 13);
 
-  const notes = getPdfRowNotes(entry.score, criteria, subIdx);
+  const notes = getPdfRowNotes(entry, criteria, subIdx);
   if (notes.length) {
     const notesText = notes.join("  |  ");
     drawWrappedPdfText(pdf, notesText, x, y, width, {
@@ -1644,22 +1646,38 @@ function formatPdfAverage(avg) {
   return avg.toFixed(2).replace(".", ",");
 }
 
-function getPdfScoreLabel(score) {
-  if (!score) return "Punteggio: Non valutato";
-  return `Punteggio: ${score}/5`;
+function getPdfScoreLabel(entry, sub) {
+  if (sub.type === "yesno") {
+    return `Risposta: ${entry.answer === true ? "Sì" : (entry.answer === false ? "No" : "Non risposto")}`;
+  }
+  if (!entry.score) return "Punteggio: Non valutato";
+  return `Punteggio: ${entry.score}/5`;
 }
 
 function getPdfCommentLabel(comment) {
   return comment.trim() || "Nessun commento.";
 }
 
-function getPdfRowNotes(score, criteria, subIdx) {
+function getPdfRowNotes(entry, criteria, subIdx) {
   const notes = [];
-  const sub = criteria.subCriteria?.[subIdx];
-  const minThreshold = typeof sub === 'object' ? (sub.minThreshold ?? 0) : 0;
+  const sub = normalizeSubCriterion(criteria.subCriteria?.[subIdx]);
 
-  if (minThreshold > 0 && score > 0 && score < minThreshold) {
-    notes.push(`Sotto il minimo (${minThreshold})`);
+  if (sub.type === "normal" && sub.minThreshold > 0 && entry.score > 0 && entry.score < sub.minThreshold) {
+    notes.push(`Sotto il minimo (${sub.minThreshold})`);
+  }
+  if (sub.type === "yesno" && entry.answer === false) {
+    notes.push("Risposta negativa: il criterio non è superato");
+  }
+  return notes;
+}
+
+function getPdfCriterionNotes(summary) {
+  const notes = [];
+  if (summary.anyBelowMin) {
+    notes.push("Almeno un sotto-criterio non ha raggiunto il minimo richiesto.");
+  }
+  if (summary.anyYesNoFailed) {
+    notes.push("Almeno un sotto-criterio Sì/No ha risposta negativa.");
   }
   return notes;
 }
@@ -1737,8 +1755,6 @@ function renderEvaluator(criteriaArr) {
   elCriteriaContainer.innerHTML = "";
 
   criteriaArr.forEach((criteria, cardIndex) => {
-    const type = criteria.type || "normal";
-
     const card = document.createElement("div");
     card.className = "criteria-card";
     card.style.animationDelay = `${cardIndex * 60}ms`;
@@ -1752,12 +1768,10 @@ function renderEvaluator(criteriaArr) {
     titleEl.className = "card-title";
     titleEl.textContent = criteria.title;
 
-    if (type === "normal") {
-      const threshEl = document.createElement("div");
-      threshEl.className = "card-threshold";
-      threshEl.textContent = `Soglia: ${criteria.threshold}`;
-      titleWrap.appendChild(threshEl);
-    }
+    const threshEl = document.createElement("div");
+    threshEl.className = "card-threshold";
+    threshEl.textContent = `Soglia: ${criteria.threshold}`;
+    titleWrap.appendChild(threshEl);
 
     titleWrap.insertBefore(titleEl, titleWrap.firstChild);
 
@@ -1770,46 +1784,68 @@ function renderEvaluator(criteriaArr) {
     header.appendChild(badge);
     card.appendChild(header);
 
-    if (type === "normal") {
-      // ────── Normal criteria with sub-criteria ──────
-      const normalizedSubs = (criteria.subCriteria || []).map(sub => {
-        if (typeof sub === 'string') {
-          return { text: sub, minThreshold: 0 };
+    const normalizedSubs = (criteria.subCriteria || []).map(normalizeSubCriterion);
+    criteria.subCriteria = normalizedSubs;
+
+    // Preserve local-only state across re-renders.
+    const existingRows = scores[criteria.id] || {};
+    scores[criteria.id] = {};
+    normalizedSubs.forEach((sub, i) => {
+      const existingEntry = existingRows[i] || {};
+      scores[criteria.id][i] = sub.type === "yesno"
+        ? {
+          answer: normalizeYesNoAnswer(existingEntry.answer),
+          comment: typeof existingEntry.comment === "string" ? existingEntry.comment : "",
         }
-        return {
-          text: sub.text || '',
-          minThreshold: sub.minThreshold ?? 0,
+        : {
+          score: Number.isFinite(Number(existingEntry.score)) ? Number(existingEntry.score) : 0,
+          comment: typeof existingEntry.comment === "string" ? existingEntry.comment : "",
         };
-      });
-      criteria.subCriteria = normalizedSubs;
+    });
 
-      // Preserve local-only score/comment state across re-renders.
-      const existingRows = scores[criteria.id] || {};
-      scores[criteria.id] = {};
-      normalizedSubs.forEach((_, i) => {
-        const existingEntry = existingRows[i];
-        scores[criteria.id][i] = {
-          score: existingEntry?.score ?? 0,
-          comment: existingEntry?.comment ?? "",
-        };
-      });
+    const list = document.createElement("div");
+    list.className = "subcriteria-list";
 
-      const list = document.createElement("div");
-      list.className = "subcriteria-list";
+    normalizedSubs.forEach((sub, subIdx) => {
+      const entry = ensureScoreEntry(criteria.id, subIdx);
+      const row = document.createElement("div");
+      row.className = "subcriteria-row";
+      row.dataset.criteriaId = criteria.id;
+      row.dataset.subIndex = subIdx;
+      row.dataset.subType = sub.type;
 
-      normalizedSubs.forEach((sub, subIdx) => {
-        const entry = ensureScoreEntry(criteria.id, subIdx);
-        const row = document.createElement("div");
-        row.className = "subcriteria-row row--cleared";
-        row.dataset.criteriaId = criteria.id;
-        row.dataset.subIndex = subIdx;
+      const text = document.createElement("span");
+      text.className = "subcriteria-text";
+      text.textContent = sub.text;
 
-        const text = document.createElement("span");
-        text.className = "subcriteria-text";
-        text.textContent = sub.text;
+      const controls = document.createElement("div");
+      controls.className = "row-controls";
 
-        const controls = document.createElement("div");
-        controls.className = "row-controls";
+      if (sub.type === "yesno") {
+        const yesnoWrap = document.createElement("div");
+        yesnoWrap.className = "yesno-wrap yesno-wrap--inline";
+
+        const yesBtn = document.createElement("button");
+        yesBtn.className = "btn-yesno btn-yesno-yes";
+        yesBtn.type = "button";
+        yesBtn.textContent = "Sì";
+        yesBtn.dataset.answer = "true";
+        yesBtn.addEventListener("click", onSubYesNoClick);
+        if (entry.answer === true) yesBtn.classList.add("active");
+
+        const noBtn = document.createElement("button");
+        noBtn.className = "btn-yesno btn-yesno-no";
+        noBtn.type = "button";
+        noBtn.textContent = "No";
+        noBtn.dataset.answer = "false";
+        noBtn.addEventListener("click", onSubYesNoClick);
+        if (entry.answer === false) noBtn.classList.add("active");
+
+        yesnoWrap.appendChild(yesBtn);
+        yesnoWrap.appendChild(noBtn);
+        controls.appendChild(yesnoWrap);
+      } else {
+        row.classList.add("row--cleared");
 
         const clearBtn = document.createElement("button");
         clearBtn.className = "btn-clear";
@@ -1844,59 +1880,31 @@ function renderEvaluator(criteriaArr) {
         controls.appendChild(clearBtn);
         controls.appendChild(notEvalLabel);
         controls.appendChild(circles);
-
-        const commentWrap = document.createElement("div");
-        commentWrap.className = "subcriteria-comment-wrap";
-
-        const textarea = document.createElement("textarea");
-        textarea.className = "field subcriteria-comment";
-        textarea.placeholder = "Inserisci un commento...";
-        textarea.rows = 3;
-        textarea.value = entry.comment;
-        textarea.addEventListener("input", onCommentInput);
-
-        row.appendChild(text);
-        row.appendChild(controls);
-        commentWrap.appendChild(textarea);
-        row.appendChild(commentWrap);
-        applyRowState(row, entry.score);
-        list.appendChild(row);
-      });
-
-      card.appendChild(list);
-    } else if (type === "yesno") {
-      // ────── Yes/No criteria ──────
-      // Initialize score entry for yes/no criteria
-      if (!scores[criteria.id]) {
-        scores[criteria.id] = { answer: null };
       }
-      const entry = scores[criteria.id];
 
-      const yesnoWrap = document.createElement("div");
-      yesnoWrap.className = "yesno-wrap";
+      const commentWrap = document.createElement("div");
+      commentWrap.className = "subcriteria-comment-wrap";
 
-      const yesBtn = document.createElement("button");
-      yesBtn.className = "btn-yesno btn-yesno-yes";
-      yesBtn.type = "button";
-      yesBtn.textContent = "Sì";
-      yesBtn.dataset.criteriaId = criteria.id;
-      yesBtn.dataset.answer = "true";
-      yesBtn.addEventListener("click", onYesNoClick);
-      if (entry.answer === true) yesBtn.classList.add("active");
+      const textarea = document.createElement("textarea");
+      textarea.className = "field subcriteria-comment";
+      textarea.placeholder = "Inserisci un commento...";
+      textarea.rows = 3;
+      textarea.value = entry.comment;
+      textarea.addEventListener("input", onCommentInput);
 
-      const noBtn = document.createElement("button");
-      noBtn.className = "btn-yesno btn-yesno-no";
-      noBtn.type = "button";
-      noBtn.textContent = "No";
-      noBtn.dataset.criteriaId = criteria.id;
-      noBtn.dataset.answer = "false";
-      noBtn.addEventListener("click", onYesNoClick);
-      if (entry.answer === false) noBtn.classList.add("active");
+      row.appendChild(text);
+      row.appendChild(controls);
+      commentWrap.appendChild(textarea);
+      row.appendChild(commentWrap);
 
-      yesnoWrap.appendChild(yesBtn);
-      yesnoWrap.appendChild(noBtn);
-      card.appendChild(yesnoWrap);
-    }
+      if (sub.type === "normal") {
+        applyRowState(row, entry.score);
+      }
+
+      list.appendChild(row);
+    });
+
+    card.appendChild(list);
 
     elCriteriaContainer.appendChild(card);
   });

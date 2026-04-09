@@ -740,6 +740,11 @@ body.drawer-resizing .drawer-resize-handle::before {
   min-width: 70px;
 }
 
+.admin-sub-row .field--subtype {
+  flex: 0 0 120px;
+  min-width: 120px;
+}
+
 .btn-remove-sub {
   display: inline-flex;
   align-items: center;
@@ -976,6 +981,22 @@ body.drawer-resizing .drawer-resize-handle::before {
   line-height: 1.5;
 }
 
+.subcriteria-comment.field-error {
+  border-color: var(--fail-color);
+  box-shadow: 0 0 0 3px rgba(179, 45, 45, .12);
+  background: rgba(179, 45, 45, .04);
+}
+
+.row--comment-missing .subcriteria-comment-wrap::before {
+  content: "Commento obbligatorio";
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fail-color);
+}
+
 
 /* Clear button */
 .btn-clear {
@@ -1063,6 +1084,16 @@ body.drawer-resizing .drawer-resize-handle::before {
   gap: 12px;
   padding: 20px 24px;
   flex-wrap: wrap;
+}
+
+.yesno-wrap--inline {
+  padding: 0;
+  gap: 8px;
+}
+
+.yesno-wrap--inline .btn-yesno {
+  min-width: 88px;
+  padding: 10px 14px;
 }
 
 .btn-yesno {
