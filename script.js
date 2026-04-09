@@ -7,7 +7,7 @@ import { initializeApp }
 
 import {
   getFirestore, collection, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, getDoc, orderBy, query, setDoc, writeBatch
+  deleteDoc, doc, getDoc, orderBy, query, setDoc, writeBatch, Bytes
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import {
@@ -42,6 +42,9 @@ let drawerResizeCleanup = null;
 const DRAWER_WIDTH_KEY = "evalkit-admin-drawer-width";
 const DRAWER_MIN_WIDTH = 360;
 const DRAWER_MAX_WIDTH = 900;
+const USER_GUIDE_DOC_PATH = ["appSettings", "userGuide"];
+const USER_GUIDE_FALLBACK_HREF = "user-guide.pdf";
+let currentUserGuideObjectUrl = null;
 
 // ─────────────────────────────────────────────────────────────
 // DOM References
@@ -51,10 +54,13 @@ const $ = id => document.getElementById(id);
 const elBtnLogin = $("btn-login");
 const elBtnLogout = $("btn-logout");
 const elBtnAdminPanel = $("btn-admin-panel");
+const elBtnUploadUserGuide = $("btn-upload-user-guide");
 const elBtnDownloadPdf = $("btn-download-pdf");
 const elBtnDownloadJson = $("btn-download-json");
 const elBtnUploadJson = $("btn-upload-json");
 const elJsonFileInput = $("json-file-input");
+const elUserGuideFileInput = $("user-guide-file-input");
+const elLinkUserGuide = $("link-user-guide");
 const elUserInfo = $("user-info");
 const elUserEmail = $("user-email");
 
@@ -106,6 +112,96 @@ function applyAuthUI(user) {
 
   // Close admin drawer on logout
   if (!loggedIn && drawerOpen) closeDrawer();
+}
+
+function withCacheBuster(url) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${Date.now()}`;
+}
+
+function getUserGuideDocRef() {
+  return doc(db, ...USER_GUIDE_DOC_PATH);
+}
+
+function releaseUserGuideObjectUrl() {
+  if (!currentUserGuideObjectUrl) return;
+  URL.revokeObjectURL(currentUserGuideObjectUrl);
+  currentUserGuideObjectUrl = null;
+}
+
+async function refreshUserGuideLink() {
+  if (!elLinkUserGuide) return;
+
+  try {
+    const snapshot = await getDoc(getUserGuideDocRef());
+    const data = snapshot.data();
+    const pdfBytes = data?.pdfBytes;
+
+    if (pdfBytes instanceof Bytes) {
+      releaseUserGuideObjectUrl();
+      const blob = new Blob([pdfBytes.toUint8Array()], { type: "application/pdf" });
+      currentUserGuideObjectUrl = URL.createObjectURL(blob);
+      elLinkUserGuide.href = currentUserGuideObjectUrl;
+      return;
+    }
+
+    releaseUserGuideObjectUrl();
+    elLinkUserGuide.href = withCacheBuster(USER_GUIDE_FALLBACK_HREF);
+  } catch (err) {
+    console.warn("User guide Firestore document unavailable, using fallback.", err);
+    releaseUserGuideObjectUrl();
+    elLinkUserGuide.href = withCacheBuster(USER_GUIDE_FALLBACK_HREF);
+  }
+}
+
+function openUserGuideFilePicker() {
+  elUserGuideFileInput?.click();
+}
+
+async function handleUserGuideFileChange(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+
+  if (!file) return;
+  if (file.type && file.type !== "application/pdf") {
+    alert("Seleziona un file PDF valido.");
+    return;
+  }
+
+  if (!currentUser) {
+    alert("Effettua l'accesso come amministratore per aggiornare la guida utente.");
+    return;
+  }
+
+  const originalLabel = elBtnUploadUserGuide?.innerHTML || "";
+  if (elBtnUploadUserGuide) {
+    elBtnUploadUserGuide.disabled = true;
+    elBtnUploadUserGuide.textContent = "Caricamento...";
+  }
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const pdfBytes = Bytes.fromUint8Array(new Uint8Array(buffer));
+
+    await setDoc(getUserGuideDocRef(), {
+      fileName: file.name,
+      contentType: "application/pdf",
+      pdfBytes,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.email || "",
+    });
+
+    await refreshUserGuideLink();
+    alert("Guida utente aggiornata con successo.");
+  } catch (err) {
+    console.error("User guide upload error:", err);
+    alert(`Aggiornamento guida utente non riuscito: ${err.message}`);
+  } finally {
+    if (elBtnUploadUserGuide) {
+      elBtnUploadUserGuide.disabled = false;
+      elBtnUploadUserGuide.innerHTML = originalLabel;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1928,9 +2024,11 @@ elBtnLogout.addEventListener("click", () => signOut(auth));
 
 // PDF download
 elBtnDownloadPdf.addEventListener("click", downloadPdf);
+elBtnUploadUserGuide?.addEventListener("click", openUserGuideFilePicker);
 elBtnDownloadJson?.addEventListener("click", downloadJsonState);
 elBtnUploadJson?.addEventListener("click", openJsonFilePicker);
 elJsonFileInput?.addEventListener("change", handleJsonFileChange);
+elUserGuideFileInput?.addEventListener("change", handleUserGuideFileChange);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());
@@ -1971,4 +2069,5 @@ onAuthStateChanged(auth, user => {
 // ─────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────
+refreshUserGuideLink();
 loadCriteria();

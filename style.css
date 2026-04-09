@@ -49,7 +49,7 @@
   --font-mono: 'DM Mono', monospace;
 
   --transition: 180ms ease;
-  --drawer-width: 420px;
+  --drawer-width: 600px;
 }
 
 html {
@@ -242,6 +242,11 @@ body {
   color: var(--text-secondary);
   background: var(--surface);
   border-color: var(--border);
+}
+
+.btn-guide:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }
 
 /* ─── Fields ────────────────────────────────────────────────── */
