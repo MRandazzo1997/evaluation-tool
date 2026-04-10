@@ -173,9 +173,7 @@ function updatePathwayUI() {
     emptyText.innerHTML = `Nessun criterio trovato per ${pathway.label}.<br>Usa il Pannello Admin per aggiungere criteri.`;
   }
   if (elOverallLabel) {
-    elOverallLabel.textContent = weighted
-      ? `Risultato Complessivo · Soglia ${formatPdfAverage(currentPathwaySettings.overallThreshold ?? 0)}`
-      : "Risultato Complessivo";
+    elOverallLabel.textContent = "Risultato Complessivo";
   }
 
   const thresholdGroup = elNewThreshold?.closest(".form-field-group");
@@ -730,7 +728,7 @@ function renderAdminList() {
         const subTypeSelect = document.createElement("select");
         subTypeSelect.className = "field field--subtype";
         subTypeSelect.innerHTML = `
-          <option value="normal">Normale</option>
+          <option value="normal">A punteggio</option>
           <option value="yesno">Sì/No</option>
         `;
         subTypeSelect.value = sub.type;
@@ -1172,12 +1170,24 @@ function updateBadges() {
   } else if (!allScored) {
     elOverallBadge.className = "badge pending";
     elOverallBadge.textContent = "–";
+    // For weighted pathway, keep threshold-only display while scoring in progress
+    if (weighted && elOverallLabel) {
+      const thresholdInt = Math.round(currentPathwaySettings.overallThreshold ?? 0);
+      elOverallLabel.textContent = `Risultato Complessivo: – · Soglia: ${thresholdInt}/100`;
+    }
   } else {
     const overallPass = weighted
       ? !anyYesNoFailedOverall && weightedOverallTotal >= (currentPathwaySettings.overallThreshold ?? 0)
       : !anyCriterionFailed;
     elOverallBadge.className = `badge ${overallPass ? "pass" : "fail"}`;
     elOverallBadge.textContent = overallPass ? "APPROVATO" : "ESCLUSO";
+    
+    // For weighted pathway, update the overall label with score and threshold
+    if (weighted && elOverallLabel) {
+      const formattedScore = formatPdfAverage(weightedOverallTotal);
+      const thresholdInt = Math.round(currentPathwaySettings.overallThreshold ?? 0);
+      elOverallLabel.textContent = `Risultato Complessivo: ${Math.round(weightedOverallTotal ?? 0)}/100 · Soglia: ${thresholdInt}/100`;
+    }
   }
 }
 
@@ -2097,7 +2107,7 @@ function renderEvaluator(criteriaArr) {
       const text = document.createElement("span");
       text.className = "subcriteria-text";
       text.textContent = isWeightedPathway() && sub.type === "normal"
-        ? `${sub.text} (Peso: ${Number(sub.weight ?? 0).toFixed(2).replace(".", ",")})`
+        ? `${sub.text} (Coefficiente: ${Number(sub.weight ?? 0).toFixed(2).replace(".", ",")})`
         : sub.text;
 
       const controls = document.createElement("div");
