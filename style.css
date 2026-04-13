@@ -709,6 +709,22 @@ body.drawer-resizing .drawer-resize-handle::before {
   min-width: 180px;
 }
 
+.evaluator-info-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, rgba(42, 110, 245, .03), rgba(255, 255, 255, .88));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.evaluator-info-group {
+  display: flex;
+  flex-direction: column;
+}
+
 .pathway-settings-panel {
   display: flex;
   flex-direction: column;

@@ -23,6 +23,11 @@ const GUIDE_DOC_PATHS = {
   lineaB: ["appSettings", "userGuideMarkdown_lineaB"],
   lineaC: ["appSettings", "userGuideMarkdown_lineaC"],
 };
+const GUIDE_PDF_HEADERS = {
+  lineaA: "",
+  lineaB: "L.R. 22/2022, articolo 7, commi 56 – 61. - Avviso per il sostegno a progetti di ricerca industriale, sviluppo sperimentale, innovazione di processo o dell'organizzazione aventi ad oggetto la realizzazione delle idee innovative selezionate con Bando denominato \"LR 22/2022, articolo 7, commi 56 - 61: Bando di concorso per la premiazione di idee innovative nel settore delle scienze della vita-Luglio 2024\" del 31/07/2024 - \"Ideas 4 Innovation- I4I- Febbraio 2025\"",
+  lineaC: "LR 22/2022 – articolo 7, commi 56 – 61\n\"Sostegno a progetti di validazione di idee e tecnologie innovative che prevedano il raggiungimento di un TRL 6, 7 o 8\" nel settore delle Scienze della Vita\nSECONDO SPORTELLO",
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -475,38 +480,115 @@ async function downloadGuidePdf() {
     return;
   }
 
-  const target = isEditing ? elPreview : elRendered;
   const originalLabel = elBtnDownloadPdf.textContent;
   elBtnDownloadPdf.disabled = true;
   elBtnDownloadPdf.textContent = "Generazione PDF...";
 
   try {
+    const pathway = getCurrentPathway();
+    const headerText = GUIDE_PDF_HEADERS[pathway] || "";
+    
+    // Get the guide content
+    const target = isEditing ? elPreview : elRendered;
+    
+    // Create PDF
+    const pdf = new jsPdfCtor("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    let currentY = margin;
+    
+    // Set default font
+    pdf.setFont("Arial", "normal");
+    pdf.setFontSize(11);
+    
+    // Add header if applicable
+    if (headerText) {
+      pdf.setFontSize(10);
+      pdf.setFont("Arial", "normal");
+      
+      const headerLines = pdf.splitTextToSize(headerText, pageWidth - margin * 2);
+      headerLines.forEach(line => {
+        pdf.text(line, margin, currentY);
+        currentY += 5;
+      });
+      
+      currentY += 5;
+      pdf.setDrawColor(100);
+      pdf.line(margin, currentY, pageWidth - margin, currentY);
+      currentY += 10;
+    }
+    
+    // Add guide content as image
+    pdf.setFontSize(11);
+    
     const canvas = await window.html2canvas(target, {
       backgroundColor: "#ffffff",
       scale: 2,
       useCORS: true,
+      allowTaint: true,
+      logging: false,
     });
 
     const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPdfCtor("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 12;
-    const renderWidth = pageWidth - margin * 2;
-    const renderHeight = (canvas.height * renderWidth) / canvas.width;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    let remainingHeight = renderHeight;
-    let positionY = margin;
-
-    pdf.addImage(imgData, "PNG", margin, positionY, renderWidth, renderHeight);
-    remainingHeight -= pageHeight - margin * 2;
-
-    while (remainingHeight > 0) {
-      positionY = remainingHeight - renderHeight + margin;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", margin, positionY, renderWidth, renderHeight);
-      remainingHeight -= pageHeight - margin * 2;
+    // Add content image
+    if (currentY + imgHeight < pageHeight - margin) {
+      // Fits on current page
+      pdf.addImage(imgData, "PNG", margin, currentY, imgWidth, imgHeight);
+      currentY += imgHeight;
+    } else {
+      // Spans multiple pages
+      let remainingHeight = imgHeight;
+      let yOffset = 0;
+      
+      while (remainingHeight > 0) {
+        const pageAvailableHeight = pageHeight - currentY - margin;
+        
+        if (pageAvailableHeight > 0 && remainingHeight > 0) {
+          const heightToCrop = Math.min(pageAvailableHeight, remainingHeight);
+          const sourceTop = yOffset;
+          const sourceHeight = (heightToCrop * canvas.height) / imgHeight;
+          
+          // Create cropped canvas
+          const croppedCanvas = document.createElement("canvas");
+          croppedCanvas.width = canvas.width;
+          croppedCanvas.height = sourceHeight;
+          const ctx = croppedCanvas.getContext("2d");
+          ctx.drawImage(canvas, 0, -sourceTop, canvas.width, canvas.height);
+          
+          const croppedImgData = croppedCanvas.toDataURL("image/png");
+          pdf.addImage(croppedImgData, "PNG", margin, currentY, imgWidth, heightToCrop);
+          
+          remainingHeight -= heightToCrop;
+          yOffset += sourceHeight;
+          currentY = pageHeight - margin;
+        }
+        
+        if (remainingHeight > 0) {
+          pdf.addPage();
+          currentY = margin;
+        }
+      }
     }
+
+    // Add footer on last page
+    const lastPageNumber = pdf.internal.pages.length - 1;
+    pdf.setPage(lastPageNumber);
+    
+    const footerY = pageHeight - margin - 10;
+    pdf.setFontSize(11);
+    pdf.setFont("Arial", "normal");
+    
+    // Draw line above footer
+    pdf.setDrawColor(150);
+    pdf.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+    
+    // Add footer text
+    pdf.text("DATA: _____________________", margin, footerY);
+    pdf.text("FIRMA (firmato digitalmente): _____________________", pageWidth / 2 + 10, footerY);
 
     pdf.save("guida-utente.pdf");
     setStatus("PDF della guida generato con successo.");

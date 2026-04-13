@@ -50,6 +50,11 @@ const PATHWAY_CONFIG = {
   lineaB: { id: "lineaB", label: "Linea B", mode: "criteria_thresholds" },
   lineaC: { id: "lineaC", label: "Linea C", mode: "criteria_thresholds" },
 };
+const GUIDE_PDF_HEADERS = {
+  lineaA: "",
+  lineaB: "L.R. 22/2022, articolo 7, commi 56 – 61. - Avviso per il sostegno a progetti di ricerca industriale, sviluppo sperimentale, innovazione di processo o dell'organizzazione aventi ad oggetto la realizzazione delle idee innovative selezionate con Bando denominato \"LR 22/2022, articolo 7, commi 56 - 61: Bando di concorso per la premiazione di idee innovative nel settore delle scienze della vita-Luglio 2024\" del 31/07/2024 - \"Ideas 4 Innovation- I4I- Febbraio 2025\"",
+  lineaC: "LR 22/2022 – articolo 7, commi 56 – 61\n\"Sostegno a progetti di validazione di idee e tecnologie innovative che prevedano il raggiungimento di un TRL 6, 7 o 8\" nel settore delle Scienze della Vita\nSECONDO SPORTELLO",
+};
 
 // ─────────────────────────────────────────────────────────────
 // DOM References
@@ -86,6 +91,10 @@ const elBtnAddCriteria = $("btn-add-criteria");
 const elAddError = $("add-error");
 const elAdminList = $("admin-list");
 const elPathwaySelect = $("pathway-select");
+
+const elCapoflaRichiedente = $("capofila-richiedente");
+const elTitoloProjetto = $("titolo-progetto");
+const elEsperto = $("esperto");
 
 const elStateLoading = $("state-loading");
 const elStateError = $("state-error");
@@ -1350,6 +1359,11 @@ function getEvaluationState() {
     exportedAt: new Date().toISOString(),
     pathway: selectedPathway,
     scores: normalizedScores,
+    evaluatorInfo: {
+      capofilaRichiedente: elCapoflaRichiedente.value,
+      titoloProjetto: elTitoloProjetto.value,
+      esperto: elEsperto.value,
+    },
   };
 }
 
@@ -1423,6 +1437,13 @@ function restoreEvaluationState(state) {
       scores[criteriaId][index] = { score, comment };
     });
   });
+
+  // Restore evaluator info if available
+  if (state.evaluatorInfo && typeof state.evaluatorInfo === "object") {
+    elCapoflaRichiedente.value = state.evaluatorInfo.capofilaRichiedente || "";
+    elTitoloProjetto.value = state.evaluatorInfo.titoloProjetto || "";
+    elEsperto.value = state.evaluatorInfo.esperto || "";
+  }
 
   renderEvaluator(criteriaList);
   updateBadges();
@@ -1520,13 +1541,51 @@ function buildEvaluationPdf(jsPdfCtor) {
     pdf.line(marginX, posY, pageWidth - marginX, posY);
   };
 
+  // Add header if applicable
+  const headerText = GUIDE_PDF_HEADERS[selectedPathway] || "";
+  if (headerText) {
+    drawWrappedText(headerText, marginX, y, (contentWidth * 2) - (marginX * 2), {
+      fontSize: 9,
+      lineHeight: 12,
+      color: [70, 70, 70],
+    });
+    y += measureWrappedText(headerText, contentWidth, { fontSize: 9, lineHeight: 12 }).height + 12;
+    drawDivider(y);
+    y += 28; // Increased spacing after divider
+  }
+
   const overallSummary = getPdfOverallSummary();
 
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(22);
   pdf.setTextColor(26, 25, 23);
-  pdf.text("Valutazione", marginX, y);
+  const pathwayLabel = PATHWAY_CONFIG[selectedPathway]?.label || selectedPathway;
+  pdf.text(`Valutazione - ${pathwayLabel}`, marginX, y);
   y += 24;
+
+  // Add evaluator info fields
+  const infoFields = [
+    { label: "Capofila Richiedente", value: elCapoflaRichiedente.value || "N/A" },
+    { label: "Titolo Progetto", value: elTitoloProjetto.value || "N/A" },
+    { label: "Esperto", value: elEsperto.value || "N/A" },
+  ];
+
+  infoFields.forEach(field => {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(70, 70, 70);
+    pdf.text(`${field.label}:`, marginX, y);
+    
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(26, 25, 23);
+    const valueLines = pdf.splitTextToSize(field.value, contentWidth);
+    pdf.text(valueLines, marginX + 140, y);
+    
+    y += 12;
+  });
+
+  y += 8;
 
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
@@ -1588,6 +1647,25 @@ function buildEvaluationPdf(jsPdfCtor) {
       y += sectionGap;
     }
   });
+
+  // Add footer on the last page
+  const lastPageNumber = pdf.internal.pages.length - 1;
+  pdf.setPage(lastPageNumber);
+  
+  // Move to bottom of last page
+  const footerY = pageHeight - bottomMargin - 20;
+  
+  // Draw separator line
+  pdf.setDrawColor(150);
+  pdf.setLineWidth(1);
+  pdf.line(marginX, footerY, pageWidth - marginX, footerY);
+  
+  // Add footer text
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  pdf.setTextColor(26, 25, 23);
+  pdf.text("DATA: _____________________", marginX, footerY + 14);
+  pdf.text("FIRMA (firmato digitalmente): _____________________", pageWidth / 2 + 5, footerY + 14);
 
   pdf.save("valutazione.pdf");
 }
