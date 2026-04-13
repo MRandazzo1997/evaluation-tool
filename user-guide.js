@@ -16,8 +16,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const GUIDE_DOC_PATH = ["appSettings", "userGuideMarkdown"];
+const PATHWAY_STORAGE_KEY = "evalkit-pathway";
 const GUIDE_FALLBACK_PATH = "user-guide.md";
+const GUIDE_DOC_PATHS = {
+  lineaA: ["appSettings", "userGuideMarkdown_lineaA"],
+  lineaB: ["appSettings", "userGuideMarkdown_lineaB"],
+  lineaC: ["appSettings", "userGuideMarkdown_lineaC"],
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,8 +55,14 @@ let guideMarkdown = "";
 let draftMarkdown = "";
 let guideSource = "repository";
 
+function getCurrentPathway() {
+  return localStorage.getItem(PATHWAY_STORAGE_KEY) || "lineaC";
+}
+
 function getGuideDocRef() {
-  return doc(db, ...GUIDE_DOC_PATH);
+  const pathway = getCurrentPathway();
+  const docPath = GUIDE_DOC_PATHS[pathway] || GUIDE_DOC_PATHS.lineaC;
+  return doc(db, ...docPath);
 }
 
 function escapeHtml(value) {
@@ -204,7 +215,9 @@ async function loadFallbackMarkdown() {
 }
 
 async function loadGuideMarkdown() {
-  setStatus("Caricamento guida in corso...");
+  const pathway = getCurrentPathway();
+  const pathwayLabel = pathway.charAt(0).toUpperCase() + pathway.slice(1);
+  setStatus(`Caricamento guida Linea ${pathwayLabel} in corso...`);
 
   try {
     const snapshot = await getDoc(getGuideDocRef());
@@ -217,7 +230,7 @@ async function loadGuideMarkdown() {
       guideSource = "firestore";
       elEditor.value = draftMarkdown;
       updateRenderedGuide(guideMarkdown);
-      setStatus("Versione pubblicata caricata da Firestore.");
+      setStatus(`Guida Linea ${pathwayLabel} caricata da Firestore.`);
       return;
     }
 
@@ -230,14 +243,14 @@ async function loadGuideMarkdown() {
       guideSource = "repository";
       elEditor.value = draftMarkdown;
       updateRenderedGuide(guideMarkdown);
-      setStatus("Versione di fallback caricata dal repository.");
+      setStatus(`Guida Linea ${pathwayLabel} caricata dal repository.`);
     } catch (fallbackErr) {
       console.error("Guide loading error:", err, fallbackErr);
       guideMarkdown = "";
       draftMarkdown = "";
       elEditor.value = "";
       updateRenderedGuide("");
-      setStatus("Impossibile caricare la guida.");
+      setStatus(`Impossibile caricare la guida Linea ${pathwayLabel}.`);
     }
   }
 }
@@ -530,6 +543,13 @@ toolbarButtons.forEach((button) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elLoginModal.classList.contains("hidden")) {
     closeLoginModal();
+  }
+});
+
+// Listen for pathway changes from other tabs/windows or from the main evaluation page
+window.addEventListener("storage", (event) => {
+  if (event.key === PATHWAY_STORAGE_KEY) {
+    loadGuideMarkdown();
   }
 });
 
