@@ -77,13 +77,12 @@ body {
 }
 
 .header-inner {
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
   padding: 0 24px;
   height: 60px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 
@@ -122,6 +121,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .user-email {

@@ -1157,7 +1157,7 @@ function updateBadges() {
       badge.classList.add("hidden");
       const metaEl = document.querySelector(`[data-criteria-meta="${criteria.id}"]`);
       if (metaEl) {
-        metaEl.textContent = `Totale pesato: ${subtotal.toFixed(2).replace(".", ",")}`;
+        metaEl.textContent = `Totale criterio pesato: ${subtotal.toFixed(2).replace(".", ",")}`;
       }
       return;
     }
@@ -1576,7 +1576,10 @@ async function handleGuideFileChange(event) {
   }
 
   elBtnUploadGuide.disabled = true;
-  elBtnUploadGuide.textContent = "Caricamento...";
+  const originalLabel = elBtnUploadGuide.innerHTML;
+  elBtnUploadGuide.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 5 17 10" /><line x1="12" y1="5" x2="12" y2="15" /></svg>
+    Caricamento...`;
 
   try {
     const reader = new FileReader();
@@ -1606,21 +1609,21 @@ async function handleGuideFileChange(event) {
         alert(`Errore nell'upload: ${err.message}`);
       } finally {
         elBtnUploadGuide.disabled = false;
-        elBtnUploadGuide.textContent = "Carica nuova guida";
+        elBtnUploadGuide.innerHTML = originalLabel;
         elGuideFileInput.value = "";
       }
     };
     reader.onerror = () => {
       alert("Errore nella lettura del file PDF.");
       elBtnUploadGuide.disabled = false;
-      elBtnUploadGuide.textContent = "Carica nuova guida";
+      elBtnUploadGuide.innerHTML = originalLabel;
     };
     reader.readAsDataURL(file);
   } catch (err) {
     console.error("File handling error:", err);
     alert("Errore nel processamento del file.");
     elBtnUploadGuide.disabled = false;
-    elBtnUploadGuide.textContent = "Carica nuova guida";
+    elBtnUploadGuide.innerHTML = originalLabel;
   }
 }
 
@@ -1653,7 +1656,7 @@ async function handleAdminGuideFileChange(event) {
   elBtnUploadAdminGuide.disabled = true;
   const originalLabel = elBtnUploadAdminGuide.innerHTML;
   elBtnUploadAdminGuide.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 14 12 9 17 14" /><line x1="12" y1="5" x2="12" y2="15" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 5 17 10" /><line x1="12" y1="5" x2="12" y2="15" /></svg>
     Caricamento...`;
 
   try {
@@ -1824,14 +1827,23 @@ function buildEvaluationPdf(jsPdfCtor) {
 
   const overallText = `Risultato: ${overallSummary.label}`;
   const overallMeta = isWeightedPathway()
-    ? `Soglia minima: ${formatPdfAverageDec(currentPathwaySettings.overallThreshold ?? 0, 0)}/100    Totale: ${formatPdfAverageDec(overallSummary.total ?? 0, 0)}/100${overallSummary.hasMissingComments ? "    Sono presenti commenti obbligatori mancanti." : ""}`
+    ? `Soglia minima: ${formatPdfAverageDec(currentPathwaySettings.overallThreshold ?? 0, 0)}/100    Totale: ${formatPdfAverageDec(overallSummary.total ?? 0, 0)}/100${overallSummary.hasMissingComments ? "\nSono presenti commenti obbligatori mancanti.\n" : ""}`
     : (overallSummary.hasMissingComments
       ? "Sono presenti commenti obbligatori mancanti."
       : "Tutti i criteri sono stati elaborati correttamente.");
 
+  // Collect all criterion notes for Linea A (weighted pathway)
+  const allCriterionNotes = isWeightedPathway() 
+    ? criteriaList.flatMap(criteria => getPdfCriterionNotes(getPdfCriterionSummary(criteria)))
+    : [];
+  const criterionNotesHeight = allCriterionNotes.length
+    ? measureWrappedText(allCriterionNotes.join("\n"), contentWidth, { fontSize: 9, lineHeight: 13 }).height
+    : 0;
+
   const overallBlockHeight =
     measureWrappedText(overallText, contentWidth, { fontSize: 13, lineHeight: 17 }).height +
     measureWrappedText(overallMeta, contentWidth, { fontSize: 10, lineHeight: 14 }).height +
+    criterionNotesHeight +
     18;
 
   ensureSpace(overallBlockHeight);
@@ -1848,6 +1860,19 @@ function buildEvaluationPdf(jsPdfCtor) {
     color: [112, 110, 104],
   });
   y += 22;
+
+  // Draw criterion notes for Linea A (weighted pathway)
+  if (allCriterionNotes.length) {
+    const criterionNotesText = allCriterionNotes.join("\n");
+    drawWrappedText(criterionNotesText, marginX, y, contentWidth, {
+      fontSize: 9,
+      lineHeight: 13,
+      color: [179, 45, 45],
+    });
+    y += criterionNotesHeight;
+    y += 8;
+  }
+
   drawDivider(y);
   y += sectionGap;
 
@@ -1999,13 +2024,19 @@ function getPdfOverallSummary() {
 function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
   const titleHeight = measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
   const metaText = isWeightedPathway()
-    ? `Totale pesato: ${formatPdfAverage(summary.subtotal)}    Stato: ${summary.label}`
-    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
+    ? `Totale criterio pesato: ${formatPdfAverage(summary.subtotal)}`
+    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}`;
   const metaHeight = measurePdfTextHeight(pdf, metaText, width, 10, 14);
-  const noteLines = getPdfCriterionNotes(summary);
-  const noteHeight = noteLines.length
-    ? measurePdfTextHeight(pdf, noteLines.join("\n"), width, 9, 13)
-    : 0;
+  
+  // Only include notes in header height for non-weighted pathways
+  let noteHeight = 0;
+  if (!isWeightedPathway()) {
+    const noteLines = getPdfCriterionNotes(summary);
+    noteHeight = noteLines.length
+      ? measurePdfTextHeight(pdf, noteLines.join("\n"), width, 9, 13)
+      : 0;
+  }
+  
   return titleHeight + metaHeight + noteHeight + 18;
 }
 
@@ -2018,8 +2049,8 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   let y = startY + measurePdfTextHeight(pdf, criteria.title, width, 15, 18, "bold");
 
   const metaText = isWeightedPathway()
-    ? `Totale pesato: ${formatPdfAverage(summary.subtotal)}    Stato: ${summary.label}`
-    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}    Stato: ${summary.label}`;
+    ? `Totale criterio pesato: ${formatPdfAverage(summary.subtotal)}`
+    : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}`;
   drawWrappedPdfText(pdf, metaText, x, y, width, {
     fontSize: 10,
     lineHeight: 14,
@@ -2027,15 +2058,18 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   });
   y += measurePdfTextHeight(pdf, metaText, width, 10, 14);
 
-  const noteLines = getPdfCriterionNotes(summary);
-  if (noteLines.length) {
-    const noteText = noteLines.join("\n");
-    drawWrappedPdfText(pdf, noteText, x, y, width, {
-      fontSize: 9,
-      lineHeight: 13,
-      color: [179, 45, 45],
-    });
-    y += measurePdfTextHeight(pdf, noteText, width, 9, 13);
+  // Only draw notes for non-weighted pathways
+  if (!isWeightedPathway()) {
+    const noteLines = getPdfCriterionNotes(summary);
+    if (noteLines.length) {
+      const noteText = noteLines.join("\n");
+      drawWrappedPdfText(pdf, noteText, x, y, width, {
+        fontSize: 9,
+        lineHeight: 13,
+        color: [179, 45, 45],
+      });
+      y += measurePdfTextHeight(pdf, noteText, width, 9, 13);
+    }
   }
 
   return y + 10;
@@ -2370,7 +2404,7 @@ function renderEvaluator(criteriaArr) {
     threshEl.className = "card-threshold";
     threshEl.dataset.criteriaMeta = criteria.id;
     threshEl.textContent = weighted
-      ? "Totale pesato: 0,00"
+      ? "Totale criterio pesato: 0,00"
       : `Soglia: ${criteria.threshold}`;
     titleWrap.appendChild(threshEl);
 
