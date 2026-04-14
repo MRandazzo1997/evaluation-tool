@@ -64,6 +64,7 @@ const $ = id => document.getElementById(id);
 const elBtnLogin = $("btn-login");
 const elBtnLogout = $("btn-logout");
 const elBtnAdminPanel = $("btn-admin-panel");
+const elBtnOpenUserGuide = $("btn-open-user-guide");
 const elBtnDownloadPdf = $("btn-download-pdf");
 const elBtnDownloadJson = $("btn-download-json");
 const elBtnUploadJson = $("btn-upload-json");
@@ -1388,6 +1389,44 @@ function downloadJsonState() {
   URL.revokeObjectURL(url);
 }
 
+async function openUserGuidePdf() {
+  try {
+    // Load PDF from Firestore
+    const docRef = doc(db, "appSettings", `userGuidePDF_${selectedPathway}`);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      const pathwayLabel = PATHWAY_CONFIG[selectedPathway]?.label || selectedPathway;
+      alert(`Nessuna guida disponibile per ${pathwayLabel}. Contatta l'amministratore per caricare un PDF.`);
+      return;
+    }
+
+    const { pdfBase64 } = docSnap.data();
+    if (!pdfBase64) {
+      alert("Guida non disponibile.");
+      return;
+    }
+
+    // Convert base64 to Blob
+    const binaryString = atob(pdfBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "application/pdf" });
+
+    // Create object URL and open in new tab
+    const pdfUrl = URL.createObjectURL(blob);
+    window.open(pdfUrl, "_blank");
+
+    // Clean up object URL after a short delay to allow browser to load
+    setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+  } catch (err) {
+    console.error("Error opening user guide:", err);
+    alert("Errore nell'apertura della guida.");
+  }
+}
+
 function normalizeYesNoAnswer(value) {
   if (value === true || value === false) return value;
   if (value === "true") return true;
@@ -2391,6 +2430,9 @@ elJsonFileInput?.addEventListener("change", handleJsonFileChange);
 // Guide PDF upload
 elBtnUploadGuide?.addEventListener("click", openGuideFilePicker);
 elGuideFileInput?.addEventListener("change", handleGuideFileChange);
+
+// Open user guide PDF
+elBtnOpenUserGuide?.addEventListener("click", openUserGuidePdf);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());
