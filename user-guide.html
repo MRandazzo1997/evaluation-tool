@@ -22,14 +22,6 @@
       </a>
       <div class="guide-header-actions">
         <button id="btn-download-guide-pdf" class="btn-ghost" type="button">Scarica PDF</button>
-        <button id="btn-edit-guide" class="btn-ghost admin-only hidden" type="button">Modifica</button>
-        <button id="btn-cancel-guide" class="btn-ghost admin-only hidden" type="button">Annulla</button>
-        <button id="btn-save-guide" class="btn-primary admin-only hidden" type="button">Salva</button>
-        <div id="guide-user-info" class="guide-user-info hidden">
-          <span id="guide-user-email" class="guide-user-email"></span>
-          <button id="btn-guide-logout" class="btn-ghost btn-danger" type="button">Esci</button>
-        </div>
-        <button id="btn-guide-login" class="btn-primary" type="button">Accedi</button>
       </div>
     </div>
   </header>
@@ -41,54 +33,13 @@
       <p id="guide-status" class="guide-status">Caricamento guida in corso...</p>
     </section>
 
-    <section id="editor-shell" class="editor-shell hidden">
-      <div class="editor-toolbar" role="toolbar" aria-label="Strumenti di formattazione">
-        <button class="toolbar-btn" type="button" data-action="h1">H1</button>
-        <button class="toolbar-btn" type="button" data-action="h2">H2</button>
-        <button class="toolbar-btn" type="button" data-action="bold">Grassetto</button>
-        <button class="toolbar-btn" type="button" data-action="italic">Corsivo</button>
-        <button class="toolbar-btn" type="button" data-action="bullet">Elenco</button>
-        <button class="toolbar-btn" type="button" data-action="number">1.</button>
-        <button class="toolbar-btn" type="button" data-action="quote">Citazione</button>
-        <button class="toolbar-btn" type="button" data-action="code">Codice</button>
-        <button class="toolbar-btn" type="button" data-action="link">Link</button>
-      </div>
-
-      <div class="editor-grid">
-        <div class="editor-panel">
-          <label class="panel-label" for="guide-editor">Markdown</label>
-          <textarea id="guide-editor" class="guide-editor" spellcheck="false"></textarea>
-        </div>
-        <div class="preview-panel">
-          <div class="panel-label">Anteprima</div>
-          <article id="guide-preview" class="guide-article guide-article--preview"></article>
-        </div>
-      </div>
-    </section>
-
     <section id="guide-view-shell" class="guide-view-shell">
-      <article id="guide-rendered" class="guide-article"></article>
+      <div id="pdf-viewer" class="pdf-viewer">
+        <iframe id="pdf-iframe" class="pdf-iframe" frameborder="0"></iframe>
+      </div>
     </section>
   </main>
 
-  <div id="guide-login-modal" class="guide-modal hidden" aria-hidden="true">
-    <div id="guide-modal-backdrop" class="guide-modal-backdrop"></div>
-    <div class="guide-modal-card" role="dialog" aria-modal="true" aria-labelledby="guide-login-title">
-      <h2 id="guide-login-title" class="guide-modal-title">Accesso amministratore</h2>
-      <label class="field-label" for="guide-login-email">Email</label>
-      <input id="guide-login-email" class="field" type="email" autocomplete="email" />
-      <label class="field-label" for="guide-login-password">Password</label>
-      <input id="guide-login-password" class="field" type="password" autocomplete="current-password" />
-      <p id="guide-login-error" class="guide-error hidden"></p>
-      <div class="guide-modal-actions">
-        <button id="btn-guide-close-login" class="btn-ghost" type="button">Chiudi</button>
-        <button id="btn-guide-submit-login" class="btn-primary" type="button">Accedi</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script type="module" src="user-guide.js"></script>
 </body>
 

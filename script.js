@@ -68,6 +68,8 @@ const elBtnDownloadPdf = $("btn-download-pdf");
 const elBtnDownloadJson = $("btn-download-json");
 const elBtnUploadJson = $("btn-upload-json");
 const elJsonFileInput = $("json-file-input");
+const elBtnUploadGuide = $("btn-upload-guide");
+const elGuideFileInput = $("guide-file-input");
 const elUserInfo = $("user-info");
 const elUserEmail = $("user-email");
 
@@ -199,6 +201,13 @@ async function handlePathwayChange(nextPathway) {
   if (!PATHWAY_CONFIG[nextPathway] || nextPathway === selectedPathway) return;
   selectedPathway = nextPathway;
   localStorage.setItem(PATHWAY_STORAGE_KEY, selectedPathway);
+  
+  // Update guide link with new pathway
+  const elUserGuideLink = document.getElementById("link-user-guide");
+  if (elUserGuideLink) {
+    elUserGuideLink.href = `user-guide.html?pathway=${selectedPathway}`;
+  }
+  
   clearScores();
   updatePathwayUI();
   await loadCriteria();
@@ -1476,6 +1485,78 @@ function openJsonFilePicker() {
   elJsonFileInput.click();
 }
 
+// ─────────────────────────────────────────────────────────────
+// Guide PDF Upload
+// ─────────────────────────────────────────────────────────────
+async function handleGuideFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.type !== "application/pdf") {
+    alert("Seleziona un file PDF valido.");
+    return;
+  }
+
+  if (!currentUser) {
+    alert("Devi essere loggato per caricare una guida.");
+    return;
+  }
+
+  elBtnUploadGuide.disabled = true;
+  elBtnUploadGuide.textContent = "Caricamento...";
+
+  try {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        // Get base64 from data URL (format: "data:application/pdf;base64,xxxxx")
+        const dataUrl = reader.result;
+        const base64 = dataUrl.split(",")[1];
+        
+        if (!base64) {
+          throw new Error("Impossibile convertire il file in base64");
+        }
+        
+        // Store in Firestore
+        const docPath = ["appSettings", `userGuidePDF_${selectedPathway}`];
+        const docRef = doc(db, ...docPath);
+        
+        await setDoc(docRef, {
+          pdfBase64: base64,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser.email || "",
+        });
+        
+        alert(`Guida PDF caricata con successo per Linea ${PATHWAY_CONFIG[selectedPathway].label}.`);
+      } catch (err) {
+        console.error("Upload error:", err);
+        alert(`Errore nell'upload: ${err.message}`);
+      } finally {
+        elBtnUploadGuide.disabled = false;
+        elBtnUploadGuide.textContent = "Carica nuova guida";
+        elGuideFileInput.value = "";
+      }
+    };
+    reader.onerror = () => {
+      alert("Errore nella lettura del file PDF.");
+      elBtnUploadGuide.disabled = false;
+      elBtnUploadGuide.textContent = "Carica nuova guida";
+    };
+    reader.readAsDataURL(file);
+  } catch (err) {
+    console.error("File handling error:", err);
+    alert("Errore nel processamento del file.");
+    elBtnUploadGuide.disabled = false;
+    elBtnUploadGuide.textContent = "Carica nuova guida";
+  }
+}
+
+function openGuideFilePicker() {
+  if (!elGuideFileInput) return;
+  elGuideFileInput.value = "";
+  elGuideFileInput.click();
+}
+
 function buildEvaluationPdf(jsPdfCtor) {
   const pdf = new jsPdfCtor({
     orientation: "p",
@@ -1593,9 +1674,9 @@ function buildEvaluationPdf(jsPdfCtor) {
   pdf.text(`Generato il ${new Date().toLocaleString("it-IT")}`, marginX, y);
   y += 20;
 
-  const overallText = `Risultato complessivo: ${overallSummary.label}`;
+  const overallText = `Risultato: ${overallSummary.label}`;
   const overallMeta = isWeightedPathway()
-    ? `Soglia complessiva: ${formatPdfAverage(currentPathwaySettings.overallThreshold ?? 0)}    Totale: ${formatPdfAverage(overallSummary.total ?? 0)}${overallSummary.hasMissingComments ? "    Sono presenti commenti obbligatori mancanti." : ""}`
+    ? `Soglia minima: ${formatPdfAverageDec(currentPathwaySettings.overallThreshold ?? 0, 0)}/100    Totale: ${formatPdfAverageDec(overallSummary.total ?? 0, 0)}/100${overallSummary.hasMissingComments ? "    Sono presenti commenti obbligatori mancanti." : ""}`
     : (overallSummary.hasMissingComments
       ? "Sono presenti commenti obbligatori mancanti."
       : "Tutti i criteri sono stati elaborati correttamente.");
@@ -2004,14 +2085,19 @@ function formatPdfAverage(avg) {
   return avg.toFixed(2).replace(".", ",");
 }
 
+function formatPdfAverageDec(avg, decimals = 2) {
+  if (avg === null || Number.isNaN(avg)) return "-";
+  return avg.toFixed(decimals).replace(".", ",");
+}
+
 function getPdfScoreLabel(entry, sub) {
   if (sub.type === "yesno") {
     return `Risposta: ${entry.answer === true ? "Sì" : (entry.answer === false ? "No" : "Non risposto")}`;
   }
   if (!entry.score) return "Punteggio: Non valutato";
   return isWeightedPathway()
-    ? `Punteggio: ${entry.score}/5    Peso: ${formatPdfAverage(sub.weight ?? 0)}`
-    : `Punteggio: ${entry.score}/5`;
+    ? `Punteggio: ${formatPdfAverageDec(entry.score ?? 0, 0)}/5    Peso: ${formatPdfAverageDec(sub.weight ?? 0, 2)}`
+    : `Punteggio: ${formatPdfAverageDec(entry.score ?? 0, 0)}/5`;
 }
 
 function getPdfCommentLabel(comment) {
@@ -2301,6 +2387,10 @@ elBtnDownloadPdf.addEventListener("click", downloadPdf);
 elBtnDownloadJson?.addEventListener("click", downloadJsonState);
 elBtnUploadJson?.addEventListener("click", openJsonFilePicker);
 elJsonFileInput?.addEventListener("change", handleJsonFileChange);
+
+// Guide PDF upload
+elBtnUploadGuide?.addEventListener("click", openGuideFilePicker);
+elGuideFileInput?.addEventListener("change", handleGuideFileChange);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());

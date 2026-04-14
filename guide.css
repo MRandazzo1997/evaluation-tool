@@ -434,3 +434,196 @@ body {
     flex: 1 1 auto;
   }
 }
+
+/* Tables */
+.guide-article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.05rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.guide-article table th {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--accent);
+}
+
+.guide-article table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-article table tr:last-child td {
+  border-bottom: none;
+}
+
+.guide-article table tr:hover {
+  background: rgba(42, 110, 245, .03);
+}
+
+/* Footnotes */
+.guide-article .footnotes {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: .9rem;
+  color: var(--text-secondary);
+}
+
+.guide-article .footnotes ol {
+  padding-left: 20px;
+  list-style-position: outside;
+}
+
+.guide-article .footnotes li {
+  margin-bottom: .8rem;
+  margin-top: 0;
+}
+
+.guide-article sup > a.footnote-ref {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: .85em;
+}
+
+.guide-article sup > a.footnote-ref:hover {
+  text-decoration: underline;
+}
+
+.guide-article a.footnote-backref {
+  color: var(--accent);
+  text-decoration: none;
+  margin-left: .4em;
+  font-size: .9em;
+}
+
+.guide-article a.footnote-backref:hover {
+  text-decoration: underline;
+}
+
+/* PDF Viewer */
+.pdf-viewer {
+  width: 100%;
+  height: 600px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.pdf-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* PDF Upload Form */
+.pdf-upload-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.upload-info {
+  margin-bottom: 24px;
+}
+
+.upload-info p {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-form .field {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-main);
+  font-size: 1rem;
+}
+
+.upload-form .field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(42, 110, 245, .1);
+}
+
+.upload-form > div {
+  display: flex;
+  gap: 8px;
+}
+
+#upload-status {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  display: none !important;
+}
+
+#upload-status.success {
+  background: rgba(34, 180, 76, .1);
+  color: #22b44c;
+  border: 1px solid rgba(34, 180, 76, .3);
+}
+
+#upload-status:not(.success) {
+  background: rgba(217, 45, 32, .1);
+  color: #d92d20;
+  border: 1px solid rgba(217, 45, 32, .3);
+}
+
+/* Editor shell for admin PDF upload */
+.editor-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  padding: 40px 24px;
+}
+
+.guide-view-shell {
+  padding: 40px 24px;
+}
+
+/* Guide hero styles */
+.guide-hero {
+  padding: 60px 24px 40px;
+  text-align: center;
+}
+
+.guide-kicker {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 12px;
+}
+
+.guide-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.guide-status {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  margin: 0;
+}

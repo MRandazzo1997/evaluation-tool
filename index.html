@@ -22,7 +22,7 @@
         <span class="brand-name">EvalKit</span>
       </div>
       <div class="header-actions">
-        <a id="link-user-guide" href="user-guide.html" target="_blank" rel="noopener noreferrer" class="btn-guide no-print" title="Apri la guida utente in una nuova scheda">
+        <a id="link-user-guide" href="user-guide.html?pathway=lineaC" target="_blank" rel="noopener noreferrer" class="btn-guide no-print" title="Apri la guida utente in una nuova scheda">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -53,6 +53,16 @@
           </svg>
           Pannello Admin
         </button>
+        <button id="btn-upload-guide" class="btn-ghost admin-only hidden no-print" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 14 12 9 17 14" />
+            <line x1="12" y1="5" x2="12" y2="15" />
+          </svg>
+          Carica nuova guida
+        </button>
+        <input id="guide-file-input" type="file" accept=".pdf,application/pdf" class="hidden" />
         <button id="btn-download-json" class="btn-ghost no-print" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -201,8 +211,8 @@
   <main class="main-content">
     <section class="pathway-panel">
       <div class="pathway-panel-copy">
-        <span class="pathway-kicker">Percorso di finanziamento</span>
-        <h2 class="pathway-title">Seleziona la linea della call</h2>
+        <!-- <span class="pathway-kicker">Percorso di finanziamento</span> -->
+        <h2 class="pathway-title">Seleziona la linea di finanziamento</h2>
       </div>
       <div class="form-field-group pathway-select-group">
         <label class="field-label" for="pathway-select">Linea</label>
