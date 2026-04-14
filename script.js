@@ -65,12 +65,15 @@ const elBtnLogin = $("btn-login");
 const elBtnLogout = $("btn-logout");
 const elBtnAdminPanel = $("btn-admin-panel");
 const elBtnOpenUserGuide = $("btn-open-user-guide");
+const elBtnOpenAdminGuide = $("btn-open-admin-guide");
 const elBtnDownloadPdf = $("btn-download-pdf");
 const elBtnDownloadJson = $("btn-download-json");
 const elBtnUploadJson = $("btn-upload-json");
 const elJsonFileInput = $("json-file-input");
 const elBtnUploadGuide = $("btn-upload-guide");
 const elGuideFileInput = $("guide-file-input");
+const elBtnUploadAdminGuide = $("btn-upload-admin-guide");
+const elAdminGuideFileInput = $("admin-guide-file-input");
 const elUserInfo = $("user-info");
 const elUserEmail = $("user-email");
 
@@ -202,12 +205,6 @@ async function handlePathwayChange(nextPathway) {
   if (!PATHWAY_CONFIG[nextPathway] || nextPathway === selectedPathway) return;
   selectedPathway = nextPathway;
   localStorage.setItem(PATHWAY_STORAGE_KEY, selectedPathway);
-  
-  // Update guide link with new pathway
-  const elUserGuideLink = document.getElementById("link-user-guide");
-  if (elUserGuideLink) {
-    elUserGuideLink.href = `user-guide.html?pathway=${selectedPathway}`;
-  }
   
   clearScores();
   updatePathwayUI();
@@ -1427,6 +1424,43 @@ async function openUserGuidePdf() {
   }
 }
 
+async function openAdminGuidePdf() {
+  try {
+    // Load PDF from Firestore
+    const docRef = doc(db, "appSettings", "adminGuidePDF");
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      alert("Nessuna guida amministratore disponibile. Contatta il supporto per caricare un PDF.");
+      return;
+    }
+
+    const { pdfBase64 } = docSnap.data();
+    if (!pdfBase64) {
+      alert("Guida amministratore non disponibile.");
+      return;
+    }
+
+    // Convert base64 to Blob
+    const binaryString = atob(pdfBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "application/pdf" });
+
+    // Create object URL and open in new tab
+    const pdfUrl = URL.createObjectURL(blob);
+    window.open(pdfUrl, "_blank");
+
+    // Clean up object URL after a short delay to allow browser to load
+    setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+  } catch (err) {
+    console.error("Error opening admin guide:", err);
+    alert("Errore nell'apertura della guida amministratore.");
+  }
+}
+
 function normalizeYesNoAnswer(value) {
   if (value === true || value === false) return value;
   if (value === "true") return true;
@@ -1594,6 +1628,81 @@ function openGuideFilePicker() {
   if (!elGuideFileInput) return;
   elGuideFileInput.value = "";
   elGuideFileInput.click();
+}
+
+function openAdminGuideFilePicker() {
+  if (!elAdminGuideFileInput) return;
+  elAdminGuideFileInput.value = "";
+  elAdminGuideFileInput.click();
+}
+
+async function handleAdminGuideFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.type !== "application/pdf") {
+    alert("Seleziona un file PDF valido.");
+    return;
+  }
+
+  if (!currentUser) {
+    alert("Devi essere loggato per caricare una guida.");
+    return;
+  }
+
+  elBtnUploadAdminGuide.disabled = true;
+  const originalLabel = elBtnUploadAdminGuide.innerHTML;
+  elBtnUploadAdminGuide.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 14 12 9 17 14" /><line x1="12" y1="5" x2="12" y2="15" /></svg>
+    Caricamento...`;
+
+  try {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        // Extract base64 from data URL (format: data:application/pdf;base64,xxxxx)
+        const dataUrl = reader.result;
+        const base64String = dataUrl.split(",")[1];
+
+        if (!base64String) {
+          alert("Errore nel processamento del file PDF.");
+          return;
+        }
+
+        // Save to Firestore
+        const docRef = doc(db, "appSettings", "adminGuidePDF");
+        await setDoc(
+          docRef,
+          {
+            pdfBase64: base64String,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser.email,
+          },
+          { merge: true }
+        );
+
+        alert("Guida amministratore caricata con successo.");
+        elAdminGuideFileInput.value = "";
+      } catch (err) {
+        console.error("Upload error:", err);
+        alert(`Caricamento non riuscito: ${err.message}`);
+      } finally {
+        elBtnUploadAdminGuide.disabled = false;
+        elBtnUploadAdminGuide.innerHTML = originalLabel;
+      }
+    };
+    reader.onerror = () => {
+      alert("Errore nella lettura del file PDF.");
+      elBtnUploadAdminGuide.disabled = false;
+      elBtnUploadAdminGuide.innerHTML = originalLabel;
+    };
+    reader.readAsDataURL(file);
+  } catch (err) {
+    console.error("File handling error:", err);
+    alert("Errore nel processamento del file.");
+    elBtnUploadAdminGuide.disabled = false;
+    elBtnUploadAdminGuide.innerHTML = originalLabel;
+  }
 }
 
 function buildEvaluationPdf(jsPdfCtor) {
@@ -2431,8 +2540,15 @@ elJsonFileInput?.addEventListener("change", handleJsonFileChange);
 elBtnUploadGuide?.addEventListener("click", openGuideFilePicker);
 elGuideFileInput?.addEventListener("change", handleGuideFileChange);
 
+// Admin Guide PDF upload
+elBtnUploadAdminGuide?.addEventListener("click", openAdminGuideFilePicker);
+elAdminGuideFileInput?.addEventListener("change", handleAdminGuideFileChange);
+
 // Open user guide PDF
 elBtnOpenUserGuide?.addEventListener("click", openUserGuidePdf);
+
+// Open admin guide PDF
+elBtnOpenAdminGuide?.addEventListener("click", openAdminGuidePdf);
 
 // Admin drawer
 elBtnAdminPanel.addEventListener("click", () => drawerOpen ? closeDrawer() : openDrawer());

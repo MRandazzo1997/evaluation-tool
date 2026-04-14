@@ -28,6 +28,8 @@ const elViewShell = $("guide-view-shell");
 const elEditorShell = $("editor-shell");
 const elEditor = $("guide-editor");
 const elBtnDownloadPdf = $("btn-download-guide-pdf");
+const elBtnUploadPdf = $("btn-upload-guide-pdf");
+const elAdminGuideFileInput = $("admin-guide-file-input");
 const elBtnEdit = $("btn-edit-guide");
 const elBtnSave = $("btn-save-guide");
 const elBtnCancel = $("btn-cancel-guide");
@@ -506,7 +508,82 @@ async function downloadGuidePdf() {
   }
 }
 
+function openAdminGuideFilePicker() {
+  if (!elAdminGuideFileInput) return;
+  elAdminGuideFileInput.value = "";
+  elAdminGuideFileInput.click();
+}
+
+async function handleAdminGuideFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.type !== "application/pdf") {
+    setStatus("Seleziona un file PDF valido.");
+    return;
+  }
+
+  if (!currentUser) {
+    setStatus("Devi essere loggato per caricare una guida.");
+    return;
+  }
+
+  elBtnUploadPdf.disabled = true;
+  const originalLabel = elBtnUploadPdf.textContent;
+  elBtnUploadPdf.textContent = "Caricamento...";
+
+  try {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        // Extract base64 from data URL (format: data:application/pdf;base64,xxxxx)
+        const dataUrl = reader.result;
+        const base64String = dataUrl.split(",")[1];
+
+        if (!base64String) {
+          setStatus("Errore nel processamento del file PDF.");
+          return;
+        }
+
+        // Save to Firestore
+        const docRef = doc(db, "appSettings", "adminGuidePDF");
+        await setDoc(
+          docRef,
+          {
+            pdfBase64: base64String,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser.email,
+          },
+          { merge: true }
+        );
+
+        setStatus("Guida amministratore caricata con successo.");
+        elAdminGuideFileInput.value = "";
+      } catch (err) {
+        console.error("Upload error:", err);
+        setStatus(`Caricamento non riuscito: ${err.message}`);
+      } finally {
+        elBtnUploadPdf.disabled = false;
+        elBtnUploadPdf.textContent = originalLabel;
+      }
+    };
+    reader.onerror = () => {
+      setStatus("Errore nella lettura del file PDF.");
+      elBtnUploadPdf.disabled = false;
+      elBtnUploadPdf.textContent = originalLabel;
+    };
+    reader.readAsDataURL(file);
+  } catch (err) {
+    console.error("File handling error:", err);
+    setStatus("Errore nel processamento del file.");
+    elBtnUploadPdf.disabled = false;
+    elBtnUploadPdf.textContent = originalLabel;
+  }
+}
+
 elBtnDownloadPdf.addEventListener("click", downloadGuidePdf);
+elBtnUploadPdf.addEventListener("click", openAdminGuideFilePicker);
+elAdminGuideFileInput.addEventListener("change", handleAdminGuideFileChange);
 elBtnEdit.addEventListener("click", () => setEditing(true));
 elBtnCancel.addEventListener("click", () => setEditing(false));
 elBtnSave.addEventListener("click", saveGuide);
