@@ -78,12 +78,12 @@ body {
 
 .header-inner {
   width: 100%;
-  padding: 0 24px;
-  height: 60px;
+  padding: 12px 24px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .header-brand {
@@ -115,6 +115,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .user-info {
@@ -122,6 +123,15 @@ body {
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .user-info {
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 8px;
+  }
 }
 
 .user-email {
@@ -473,6 +483,13 @@ body.drawer-resizing .drawer-resize-handle::before {
   font-weight: 600;
   letter-spacing: -.01em;
   color: var(--text-primary);
+}
+
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .drawer-section {

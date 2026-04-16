@@ -1826,8 +1826,8 @@ function buildEvaluationPdf(jsPdfCtor) {
   y += 20;
 
   const overallText = `Risultato: ${overallSummary.label}`;
-  const overallMeta = isWeightedPathway()
-    ? `Soglia minima: ${formatPdfAverageDec(currentPathwaySettings.overallThreshold ?? 0, 0)}/100    Totale: ${formatPdfAverageDec(overallSummary.total ?? 0, 0)}/100${overallSummary.hasMissingComments ? "\nSono presenti commenti obbligatori mancanti.\n" : ""}`
+  const overallMetaBase = isWeightedPathway()
+    ? `Soglia minima: ${formatPdfAverageDec(currentPathwaySettings.overallThreshold ?? 0, 0)}/100    Totale: ${formatPdfAverageDec(overallSummary.total ?? 0, 0)}/100`
     : (overallSummary.hasMissingComments
       ? "Sono presenti commenti obbligatori mancanti."
       : "Tutti i criteri sono stati elaborati correttamente.");
@@ -1840,9 +1840,15 @@ function buildEvaluationPdf(jsPdfCtor) {
     ? measureWrappedText(allCriterionNotes.join("\n"), contentWidth, { fontSize: 9, lineHeight: 13 }).height
     : 0;
 
+  const overallMetaBaseHeight = measureWrappedText(overallMetaBase, contentWidth, { fontSize: 10, lineHeight: 14 }).height;
+  const warningHeight = overallSummary.hasMissingComments
+    ? measureWrappedText("Sono presenti commenti obbligatori mancanti.", contentWidth, { fontSize: 10, lineHeight: 14 }).height
+    : 0;
+
   const overallBlockHeight =
     measureWrappedText(overallText, contentWidth, { fontSize: 13, lineHeight: 17 }).height +
-    measureWrappedText(overallMeta, contentWidth, { fontSize: 10, lineHeight: 14 }).height +
+    overallMetaBaseHeight +
+    warningHeight +
     criterionNotesHeight +
     18;
 
@@ -1854,12 +1860,37 @@ function buildEvaluationPdf(jsPdfCtor) {
     color: overallSummary.pass ? [26, 122, 74] : [179, 45, 45],
   });
   y += 18;
-  drawWrappedText(overallMeta, marginX, y, contentWidth, {
+  
+  // For weighted pathway (Linea A), color the overall score based on threshold
+  const overallMetaColor = isWeightedPathway()
+    ? (overallSummary.pass ? [26, 122, 74] : [179, 45, 45])
+    : [112, 110, 104];
+  
+  // Draw overall meta base text with appropriate color
+  let metaColor = overallMetaColor;
+  if (!isWeightedPathway() && overallSummary.hasMissingComments) {
+    metaColor = [168, 90, 0]; // ochre for warning in non-weighted pathways
+  }
+  drawWrappedText(overallMetaBase, marginX, y, contentWidth, {
     fontSize: 10,
     lineHeight: 14,
-    color: [112, 110, 104],
+    color: metaColor,
   });
-  y += 22;
+  const metaBaseHeight = measureWrappedText(overallMetaBase, contentWidth, { fontSize: 10, lineHeight: 14 }).height;
+  y += metaBaseHeight;
+  
+  // Draw warning message in ochre if present (only for weighted pathway)
+  if (isWeightedPathway() && overallSummary.hasMissingComments) {
+    drawWrappedText("Sono presenti commenti obbligatori mancanti.", marginX, y, contentWidth, {
+      fontSize: 10,
+      lineHeight: 14,
+      color: [168, 90, 0],
+    });
+    const warningHeight = measureWrappedText("Sono presenti commenti obbligatori mancanti.", contentWidth, { fontSize: 10, lineHeight: 14 }).height;
+    y += warningHeight;
+  }
+  
+  y += 8;
 
   // Draw criterion notes for Linea A (weighted pathway)
   if (allCriterionNotes.length) {
@@ -2051,11 +2082,25 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   const metaText = isWeightedPathway()
     ? `Totale criterio pesato: ${formatPdfAverage(summary.subtotal)}`
     : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}`;
-  drawWrappedPdfText(pdf, metaText, x, y, width, {
-    fontSize: 10,
-    lineHeight: 14,
-    color: [112, 110, 104],
-  });
+  
+  // For non-weighted pathways (Linea B and C), add pass/fail tag and color based on threshold
+  if (!isWeightedPathway()) {
+    const metaTextColor = summary.pass ? [26, 122, 74] : [179, 45, 45];
+    const passFailTag = summary.pass ? "SÌ" : "NO";
+    const metaWithTag = `${metaText}    ${passFailTag}`;
+    
+    drawWrappedPdfText(pdf, metaWithTag, x, y, width, {
+      fontSize: 10,
+      lineHeight: 14,
+      color: metaTextColor,
+    });
+  } else {
+    drawWrappedPdfText(pdf, metaText, x, y, width, {
+      fontSize: 10,
+      lineHeight: 14,
+      color: [112, 110, 104],
+    });
+  }
   y += measurePdfTextHeight(pdf, metaText, width, 10, 14);
 
   // Only draw notes for non-weighted pathways
@@ -2091,7 +2136,7 @@ function getPdfRowHeight(pdf, criteria, subIdx, sub, width) {
   const normalizedSub = normalizeSubCriterion(sub);
   const noteLines = getPdfRowNotes(entry, criteria, subIdx);
   const subLabel = normalizedSub.text;
-  const titleHeight = measurePdfTextHeight(pdf, `${subIdx + 1}. ${subLabel}`, width, 11, 15, "bold");
+  const titleHeight = measurePdfTextHeight(pdf, subLabel, width, 11, 15, "bold");
   const scoreHeight = measurePdfTextHeight(pdf, getPdfScoreLabel(entry, normalizedSub), width, 10, 13);
   const notesHeight = noteLines.length
     ? measurePdfTextHeight(pdf, noteLines.join("  |  "), width, 9, 12)
@@ -2115,7 +2160,7 @@ function drawPdfSubCriteriaRow(pdf, criteria, subIdx, sub, x, startY, width) {
   const normalizedSub = normalizeSubCriterion(sub);
   const subLabel = normalizedSub.text;
 
-  const title = `${subIdx + 1}. ${subLabel}`;
+  const title = subLabel;
   drawWrappedPdfText(pdf, title, x, y, width, {
     fontSize: 11,
     lineHeight: 15,
