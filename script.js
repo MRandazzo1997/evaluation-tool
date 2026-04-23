@@ -49,11 +49,13 @@ const PATHWAY_CONFIG = {
   lineaA: { id: "lineaA", label: "Linea A", mode: "weighted_overall" },
   lineaB: { id: "lineaB", label: "Linea B", mode: "criteria_thresholds" },
   lineaC: { id: "lineaC", label: "Linea C", mode: "criteria_thresholds" },
+  lineaD: { id: "lineaD", label: "Linea D", mode: "weighted_overall" },
 };
 const GUIDE_PDF_HEADERS = {
   lineaA: "",
   lineaB: "L.R. 22/2022, articolo 7, commi 56 – 61. - Avviso per il sostegno a progetti di ricerca industriale, sviluppo sperimentale, innovazione di processo o dell'organizzazione aventi ad oggetto la realizzazione delle idee innovative selezionate con Bando denominato \"LR 22/2022, articolo 7, commi 56 - 61: Bando di concorso per la premiazione di idee innovative nel settore delle scienze della vita-Luglio 2024\" del 31/07/2024 - \"Ideas 4 Innovation- I4I- Febbraio 2025\"",
   lineaC: "LR 22/2022 – articolo 7, commi 56 – 61\n\"Sostegno a progetti di validazione di idee e tecnologie innovative che prevedano il raggiungimento di un TRL 6, 7 o 8\" nel settore delle Scienze della Vita\nSECONDO SPORTELLO",
+  lineaD: "",
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -205,7 +207,7 @@ async function handlePathwayChange(nextPathway) {
   if (!PATHWAY_CONFIG[nextPathway] || nextPathway === selectedPathway) return;
   selectedPathway = nextPathway;
   localStorage.setItem(PATHWAY_STORAGE_KEY, selectedPathway);
-  
+
   clearScores();
   updatePathwayUI();
   await loadCriteria();
@@ -1197,7 +1199,7 @@ function updateBadges() {
       : !anyCriterionFailed;
     elOverallBadge.className = `badge ${overallPass ? "pass" : "fail"}`;
     elOverallBadge.textContent = overallPass ? "APPROVATO" : "ESCLUSO";
-    
+
     // For weighted pathway, update the overall label with score and threshold
     if (weighted && elOverallLabel) {
       const formattedScore = formatPdfAverage(weightedOverallTotal);
@@ -1588,21 +1590,21 @@ async function handleGuideFileChange(event) {
         // Get base64 from data URL (format: "data:application/pdf;base64,xxxxx")
         const dataUrl = reader.result;
         const base64 = dataUrl.split(",")[1];
-        
+
         if (!base64) {
           throw new Error("Impossibile convertire il file in base64");
         }
-        
+
         // Store in Firestore
         const docPath = ["appSettings", `userGuidePDF_${selectedPathway}`];
         const docRef = doc(db, ...docPath);
-        
+
         await setDoc(docRef, {
           pdfBase64: base64,
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser.email || "",
         });
-        
+
         alert(`Guida PDF caricata con successo per Linea ${PATHWAY_CONFIG[selectedPathway].label}.`);
       } catch (err) {
         console.error("Upload error:", err);
@@ -1807,13 +1809,13 @@ function buildEvaluationPdf(jsPdfCtor) {
     pdf.setFontSize(9);
     pdf.setTextColor(70, 70, 70);
     pdf.text(`${field.label}:`, marginX, y);
-    
+
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.setTextColor(26, 25, 23);
     const valueLines = pdf.splitTextToSize(field.value, contentWidth);
     pdf.text(valueLines, marginX + 140, y);
-    
+
     y += 12;
   });
 
@@ -1833,7 +1835,7 @@ function buildEvaluationPdf(jsPdfCtor) {
       : "Tutti i criteri sono stati elaborati correttamente.");
 
   // Collect all criterion notes for Linea A (weighted pathway)
-  const allCriterionNotes = isWeightedPathway() 
+  const allCriterionNotes = isWeightedPathway()
     ? criteriaList.flatMap(criteria => getPdfCriterionNotes(getPdfCriterionSummary(criteria)))
     : [];
   const criterionNotesHeight = allCriterionNotes.length
@@ -1860,12 +1862,12 @@ function buildEvaluationPdf(jsPdfCtor) {
     color: overallSummary.pass ? [26, 122, 74] : [179, 45, 45],
   });
   y += 18;
-  
+
   // For weighted pathway (Linea A), color the overall score based on threshold
   const overallMetaColor = isWeightedPathway()
     ? (overallSummary.pass ? [26, 122, 74] : [179, 45, 45])
     : [112, 110, 104];
-  
+
   // Draw overall meta base text with appropriate color
   let metaColor = overallMetaColor;
   if (!isWeightedPathway() && overallSummary.hasMissingComments) {
@@ -1878,7 +1880,7 @@ function buildEvaluationPdf(jsPdfCtor) {
   });
   const metaBaseHeight = measureWrappedText(overallMetaBase, contentWidth, { fontSize: 10, lineHeight: 14 }).height;
   y += metaBaseHeight;
-  
+
   // Draw warning message in ochre if present (only for weighted pathway)
   if (isWeightedPathway() && overallSummary.hasMissingComments) {
     drawWrappedText("Sono presenti commenti obbligatori mancanti.", marginX, y, contentWidth, {
@@ -1889,7 +1891,7 @@ function buildEvaluationPdf(jsPdfCtor) {
     const warningHeight = measureWrappedText("Sono presenti commenti obbligatori mancanti.", contentWidth, { fontSize: 10, lineHeight: 14 }).height;
     y += warningHeight;
   }
-  
+
   y += 8;
 
   // Draw criterion notes for Linea A (weighted pathway)
@@ -1936,15 +1938,15 @@ function buildEvaluationPdf(jsPdfCtor) {
   // Add footer on the last page
   const lastPageNumber = pdf.internal.pages.length - 1;
   pdf.setPage(lastPageNumber);
-  
+
   // Move to bottom of last page
   const footerY = pageHeight - bottomMargin - 20;
-  
+
   // Draw separator line
   pdf.setDrawColor(150);
   pdf.setLineWidth(1);
   pdf.line(marginX, footerY, pageWidth - marginX, footerY);
-  
+
   // Add footer text
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(11);
@@ -2058,7 +2060,7 @@ function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
     ? `Totale criterio pesato: ${formatPdfAverage(summary.subtotal)}`
     : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}`;
   const metaHeight = measurePdfTextHeight(pdf, metaText, width, 10, 14);
-  
+
   // Only include notes in header height for non-weighted pathways
   let noteHeight = 0;
   if (!isWeightedPathway()) {
@@ -2067,7 +2069,7 @@ function getPdfCriterionHeaderHeight(pdf, criteria, summary, width) {
       ? measurePdfTextHeight(pdf, noteLines.join("\n"), width, 9, 13)
       : 0;
   }
-  
+
   return titleHeight + metaHeight + noteHeight + 18;
 }
 
@@ -2082,13 +2084,13 @@ function drawPdfCriterionHeader(pdf, criteria, summary, x, startY, width) {
   const metaText = isWeightedPathway()
     ? `Totale criterio pesato: ${formatPdfAverage(summary.subtotal)}`
     : `Soglia: ${criteria.threshold}    Media: ${formatPdfAverage(summary.hasScoredSubs ? summary.avg : null)}`;
-  
+
   // For non-weighted pathways (Linea B and C), add pass/fail tag and color based on threshold
   if (!isWeightedPathway()) {
     const metaTextColor = summary.pass ? [26, 122, 74] : [179, 45, 45];
     const passFailTag = summary.pass ? "SÌ" : "NO";
     const metaWithTag = `${metaText}    ${passFailTag}`;
-    
+
     drawWrappedPdfText(pdf, metaWithTag, x, y, width, {
       fontSize: 10,
       lineHeight: 14,
