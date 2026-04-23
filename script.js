@@ -1222,10 +1222,24 @@ function applyRowState(rowEl, score) {
   const mode = rowEl.dataset.subType || "normal";
   if (mode !== "normal") return;
 
-  // Update circles
-  rowEl.querySelectorAll(".circle").forEach(c => {
-    c.classList.toggle("filled", parseInt(c.dataset.value, 10) <= score);
-  });
+  const weighted = isWeightedPathway();
+
+  if (!weighted) {
+    // Update circles for non-weighted pathways
+    rowEl.querySelectorAll(".circle").forEach(c => {
+      c.classList.toggle("filled", parseInt(c.dataset.value, 10) <= score);
+    });
+  } else {
+    // Update dropdown for weighted pathways
+    const dropdown = rowEl.querySelector(".decimal-dropdown");
+    const input = rowEl.querySelector(".decimal-input");
+    if (dropdown) {
+      dropdown.value = score > 0 ? score : "";
+    }
+    if (input) {
+      input.value = score > 0 ? score.toFixed(1).replace(".", ",") : "";
+    }
+  }
 
   // Faded / not-evaluated visual
   const isCleared = score === 0;
@@ -1233,7 +1247,7 @@ function applyRowState(rowEl, score) {
 
   // "Not evaluated" label
   let label = rowEl.querySelector(".not-eval-label");
-  if (isCleared) {
+  if (isCleared && !weighted) {
     if (!label) {
       label = document.createElement("span");
       label.className = "not-eval-label";
@@ -1274,6 +1288,61 @@ function onClearClick(e) {
   entry.score = 0;                               // write BEFORE recalc
   console.log(`[onClearClick] ${cid}[${idx}] → 0`, scores[cid]);
   applyRowState(row, 0);
+  updateBadges();
+}
+
+function getValidDecimalValues() {
+  const values = [];
+  for (let i = 0; i <= 5; i += 0.5) {
+    values.push(parseFloat(i.toFixed(1)));
+  }
+  return values;
+}
+
+function isValidDecimalValue(val) {
+  const num = parseFloat(val);
+  if (!Number.isFinite(num)) return false;
+  const validValues = getValidDecimalValues();
+  return validValues.includes(num);
+}
+
+function onDecimalDropdownChange(e) {
+  const select = e.currentTarget;
+  const row = select.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+  const value = parseFloat(select.value);
+
+  if (!isValidDecimalValue(value)) return;
+
+  const entry = ensureScoreEntry(cid, idx);
+  entry.score = value;
+  console.log(`[onDecimalDropdownChange] ${cid}[${idx}] → ${value}`, scores[cid]);
+  applyRowState(row, value);
+  updateBadges();
+}
+
+function onDecimalDropdownInput(e) {
+  const input = e.currentTarget;
+  const value = input.value.trim();
+
+  if (!value) return;
+
+  const num = parseFloat(value);
+  if (!isValidDecimalValue(num)) {
+    input.classList.add("field-error");
+    return;
+  }
+
+  input.classList.remove("field-error");
+  const row = input.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+
+  const entry = ensureScoreEntry(cid, idx);
+  entry.score = num;
+  console.log(`[onDecimalDropdownInput] ${cid}[${idx}] → ${num}`, scores[cid]);
+  applyRowState(row, num);
   updateBadges();
 }
 
@@ -1799,7 +1868,7 @@ function buildEvaluationPdf(jsPdfCtor) {
 
   // Add evaluator info fields
   const infoFields = [
-    { label: "Capofila Richiedente", value: elCapoflaRichiedente.value || "N/A" },
+    { label: "Richiedente", value: elCapoflaRichiedente.value || "N/A" },
     { label: "Titolo Progetto", value: elTitoloProjetto.value || "N/A" },
     { label: "Esperto", value: elEsperto.value || "N/A" },
   ];
@@ -2532,39 +2601,111 @@ function renderEvaluator(criteriaArr) {
       } else {
         row.classList.add("row--cleared");
 
-        const clearBtn = document.createElement("button");
-        clearBtn.className = "btn-clear";
-        clearBtn.type = "button";
-        clearBtn.title = "Azzera punteggio";
-        clearBtn.setAttribute("aria-label", "Azzera il punteggio a non valutato");
-        clearBtn.innerHTML = `
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>`;
-        clearBtn.addEventListener("click", onClearClick);
+        if (weighted) {
+          // Decimal dropdown for weighted pathways (Linea A, D)
+          const dropdownWrap = document.createElement("div");
+          dropdownWrap.className = "decimal-dropdown-wrap";
 
-        const notEvalLabel = document.createElement("span");
-        notEvalLabel.className = "not-eval-label";
-        notEvalLabel.textContent = "Non valutato";
+          const validValues = getValidDecimalValues();
+          const dropdown = document.createElement("select");
+          dropdown.className = "field decimal-dropdown";
+          dropdown.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
 
-        const circles = document.createElement("div");
-        circles.className = "score-circles";
-        circles.setAttribute("role", "group");
-        circles.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
+          // Default option (value 0)
+          const defaultOpt = document.createElement("option");
+          defaultOpt.value = "";
+          defaultOpt.textContent = "Seleziona valore";
+          dropdown.appendChild(defaultOpt);
 
-        for (let v = 1; v <= 5; v++) {
-          const circle = document.createElement("button");
-          circle.className = "circle";
-          circle.type = "button";
-          circle.dataset.value = v;
-          circle.setAttribute("aria-label", `Punteggio ${v}`);
-          circle.addEventListener("click", onCircleClick);
-          circles.appendChild(circle);
+          // Add options for each valid decimal value
+          validValues.forEach(val => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = val.toFixed(1).replace(".", ",");
+            dropdown.appendChild(opt);
+          });
+
+          dropdown.value = entry.score && entry.score > 0 ? String(entry.score) : "";
+          dropdown.addEventListener("change", onDecimalDropdownChange);
+
+          // Text input for manual entry with validation
+          const manualInput = document.createElement("input");
+          manualInput.type = "text";
+          manualInput.className = "field decimal-input";
+          manualInput.placeholder = "o scrivi (es: 2.5)";
+          manualInput.value = entry.score > 0 ? entry.score.toFixed(1).replace(".", ",") : "";
+          manualInput.addEventListener("input", (e) => {
+            const inputVal = e.target.value.trim().replace(",", ".");
+            const numVal = parseFloat(inputVal);
+
+            if (inputVal === "") {
+              e.target.classList.remove("field-error");
+              // Clear the score when input is empty
+              const row = e.target.closest(".subcriteria-row");
+              const cid = row.dataset.criteriaId;
+              const idx = parseInt(row.dataset.subIndex, 10);
+              const entry = ensureScoreEntry(cid, idx);
+              entry.score = 0;
+              dropdown.value = "";
+              applyRowState(row, 0);
+              updateBadges();
+              return;
+            }
+
+            if (isValidDecimalValue(numVal)) {
+              e.target.classList.remove("field-error");
+              const row = e.target.closest(".subcriteria-row");
+              const cid = row.dataset.criteriaId;
+              const idx = parseInt(row.dataset.subIndex, 10);
+              const entry = ensureScoreEntry(cid, idx);
+              entry.score = numVal;
+              dropdown.value = numVal;
+              applyRowState(row, numVal);
+              updateBadges();
+            } else {
+              e.target.classList.add("field-error");
+            }
+          });
+
+          dropdownWrap.appendChild(dropdown);
+          dropdownWrap.appendChild(manualInput);
+          controls.appendChild(dropdownWrap);
+        } else {
+          // Integer circles for non-weighted pathways (Linea B, C)
+          const clearBtn = document.createElement("button");
+          clearBtn.className = "btn-clear";
+          clearBtn.type = "button";
+          clearBtn.title = "Azzera punteggio";
+          clearBtn.setAttribute("aria-label", "Azzera il punteggio a non valutato");
+          clearBtn.innerHTML = `
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>`;
+          clearBtn.addEventListener("click", onClearClick);
+
+          const notEvalLabel = document.createElement("span");
+          notEvalLabel.className = "not-eval-label";
+          notEvalLabel.textContent = "Non valutato";
+
+          const circles = document.createElement("div");
+          circles.className = "score-circles";
+          circles.setAttribute("role", "group");
+          circles.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
+
+          for (let v = 1; v <= 5; v++) {
+            const circle = document.createElement("button");
+            circle.className = "circle";
+            circle.type = "button";
+            circle.dataset.value = v;
+            circle.setAttribute("aria-label", `Punteggio ${v}`);
+            circle.addEventListener("click", onCircleClick);
+            circles.appendChild(circle);
+          }
+
+          controls.appendChild(clearBtn);
+          controls.appendChild(notEvalLabel);
+          controls.appendChild(circles);
         }
-
-        controls.appendChild(clearBtn);
-        controls.appendChild(notEvalLabel);
-        controls.appendChild(circles);
       }
 
       const commentWrap = document.createElement("div");

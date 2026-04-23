@@ -1214,6 +1214,53 @@ body.drawer-resizing .drawer-resize-handle::before {
   background: var(--fail-bg);
 }
 
+/* ─── Decimal Dropdown (Weighted Pathways) ─────────────────────── */
+.decimal-dropdown-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.decimal-dropdown,
+.decimal-input {
+  font-family: var(--font-main);
+  font-size: .9rem;
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  transition: all var(--transition);
+}
+
+.decimal-dropdown:focus,
+.decimal-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.decimal-dropdown {
+  min-width: 120px;
+  cursor: pointer;
+}
+
+.decimal-input {
+  min-width: 100px;
+  flex: 0 1 auto;
+}
+
+.decimal-input.field-error {
+  border-color: var(--fail-color);
+  background: var(--fail-bg);
+  color: var(--fail-color);
+}
+
+.decimal-input.field-error::placeholder {
+  color: var(--fail-color);
+  opacity: 0.6;
+}
 
 /* ─── Overall Result ─────────────────────────────────────────── */
 .overall-result {
