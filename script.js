@@ -52,9 +52,9 @@ const PATHWAY_CONFIG = {
   lineaD: { id: "lineaD", label: "Linea D", mode: "weighted_overall" },
 };
 const GUIDE_PDF_HEADERS = {
-  lineaA: "",
-  lineaB: "L.R. 22/2022, articolo 7, commi 56 – 61. - Avviso per il sostegno a progetti di ricerca industriale, sviluppo sperimentale, innovazione di processo o dell'organizzazione aventi ad oggetto la realizzazione delle idee innovative selezionate con Bando denominato \"LR 22/2022, articolo 7, commi 56 - 61: Bando di concorso per la premiazione di idee innovative nel settore delle scienze della vita-Luglio 2024\" del 31/07/2024 - \"Ideas 4 Innovation- I4I- Febbraio 2025\"",
-  lineaC: "LR 22/2022 – articolo 7, commi 56 – 61\n\"Sostegno a progetti di validazione di idee e tecnologie innovative che prevedano il raggiungimento di un TRL 6, 7 o 8\" nel settore delle Scienze della Vita\nSECONDO SPORTELLO",
+  lineaA: "LR 22/2022, articolo 7, commi 56 - 61: BANDO DI CONCORSO PER LA PREMIAZIONE DI IDEE INNOVATIVE NEL SETTORE DELLE SCIENZE DELLA VITA",
+  lineaB: "L.R. 22/2022, articolo 7, commi 56 – 61. “Ideas 4 Innovation- I4I”",
+  lineaC: "LR 22/2022 – articolo 7, commi 56, 57 e 60 - Sostegno a progetti di validazione di idee e tecnologie innovative che prevedano il raggiungimento di un TRL 6, 7 o 8",
   lineaD: "",
 };
 
@@ -162,7 +162,7 @@ async function loadPathwaySettings() {
     const snapshot = await getDoc(getPathwaySettingsRef());
     const data = snapshot.data() || {};
     currentPathwaySettings = {
-      overallThreshold: Number.isFinite(Number(data.overallThreshold)) ? Number(data.overallThreshold) : 0,
+      overallThreshold: Number.isFinite(Number(data.overallThreshold)) ? Math.round(Number(data.overallThreshold)) : 0,
     };
   } catch (err) {
     console.warn("Pathway settings load error:", err);
@@ -544,9 +544,16 @@ function renderPathwaySettingsPanel() {
   thresholdInput.type = "number";
   thresholdInput.className = "field";
   thresholdInput.min = "0";
-  thresholdInput.step = "0.1";
+  thresholdInput.step = "1";
+  thresholdInput.setAttribute("inputmode", "numeric");
   thresholdInput.placeholder = "Soglia complessiva";
   thresholdInput.value = currentPathwaySettings.overallThreshold ?? 0;
+  thresholdInput.addEventListener("input", () => {
+    const sanitized = thresholdInput.value.replace(/[^\d-]/g, "");
+    if (thresholdInput.value !== sanitized) {
+      thresholdInput.value = sanitized;
+    }
+  });
 
   const saveBtn = document.createElement("button");
   saveBtn.className = "btn-primary";
@@ -557,7 +564,7 @@ function renderPathwaySettingsPanel() {
   msgEl.className = "inline-msg hidden";
 
   saveBtn.addEventListener("click", async () => {
-    const nextThreshold = parseFloat(thresholdInput.value);
+    const nextThreshold = parseInt(thresholdInput.value, 10);
     if (isNaN(nextThreshold) || nextThreshold < 0) {
       showInlineMsg(msgEl, "Inserisci una soglia valida", "err");
       return;
@@ -658,7 +665,7 @@ function renderAdminList() {
     threshInput.className = "field";
     threshInput.value = criteria.threshold;
     threshInput.placeholder = "Soglia";
-    threshInput.step = "0.1";
+    threshInput.step = "1";
     threshInput.min = "0";
     threshInput.max = "5";
     threshGroup.style.display = weighted ? "none" : "";
@@ -757,7 +764,7 @@ function renderAdminList() {
         minThreshInput.className = "field field--sm";
         minThreshInput.value = weighted ? sub.weight : sub.minThreshold;
         minThreshInput.placeholder = weighted ? "Peso" : "Min";
-        minThreshInput.step = "0.1";
+        minThreshInput.step = "1";
         minThreshInput.min = "0";
         minThreshInput.max = weighted ? "999" : "5";
         minThreshInput.title = weighted
@@ -1009,11 +1016,22 @@ function normalizeSubCriterion(sub) {
     return { text: "", type: "normal", minThreshold: 0, weight: 0 };
   }
 
+  const isYesNo = sub.type === "yesno";
+  const rawMinThreshold = Number(sub.minThreshold);
+  const rawWeight = Number(sub.weight);
+
   return {
     text: sub.text || "",
-    type: sub.type === "yesno" ? "yesno" : "normal",
-    minThreshold: sub.type === "yesno" ? 0 : Math.max(0, Math.min(5, Number(sub.minThreshold) || 0)),
-    weight: sub.type === "yesno" ? 0 : Math.max(0, Number(sub.weight) || 0),
+    type: isYesNo ? "yesno" : "normal",
+    minThreshold: isYesNo ? 0 : Math.max(0, Math.min(5, Number.isFinite(rawMinThreshold) ? rawMinThreshold : 0)),
+    weight: isYesNo
+      ? 0
+      : Math.max(
+        0,
+        Number.isFinite(rawWeight) && rawWeight > 0
+          ? rawWeight
+          : (isWeightedPathway() && Number.isFinite(rawMinThreshold) && rawMinThreshold > 0 ? rawMinThreshold : 0),
+      ),
   };
 }
 
@@ -1029,7 +1047,7 @@ function countNormalSubCriteria(criteria) {
 function createDefaultEntry(subType = "normal") {
   return subType === "yesno"
     ? { answer: null, comment: "" }
-    : { score: 0, comment: "" };
+    : { score: isWeightedPathway() ? null : 0, comment: "" };
 }
 
 function ensureScoreEntry(criteriaId, subIndex) {
@@ -1044,8 +1062,15 @@ function ensureScoreEntry(criteriaId, subIndex) {
       scores[criteriaId][subIndex].comment = "";
     }
   } else {
-    const entryScore = Number(scores[criteriaId][subIndex].score);
-    scores[criteriaId][subIndex].score = Number.isFinite(entryScore) ? entryScore : 0;
+    const rawScore = scores[criteriaId][subIndex].score;
+    if (rawScore === null || rawScore === undefined || rawScore === "") {
+      scores[criteriaId][subIndex].score = isWeightedPathway() ? null : 0;
+    } else {
+      const entryScore = Number(rawScore);
+      scores[criteriaId][subIndex].score = Number.isFinite(entryScore)
+        ? entryScore
+        : (isWeightedPathway() ? null : 0);
+    }
     if (typeof scores[criteriaId][subIndex].comment !== "string") {
       scores[criteriaId][subIndex].comment = "";
     }
@@ -1061,7 +1086,9 @@ function isCommentRequired(criteriaId, subIndex, entry = null) {
     return currentEntry.answer === true || currentEntry.answer === false;
   }
 
-  return (currentEntry.score ?? 0) > 0;
+  return isWeightedPathway()
+    ? currentEntry.score !== null && currentEntry.score !== undefined
+    : (currentEntry.score ?? 0) > 0;
 }
 
 function checkMissingComments() {
@@ -1133,7 +1160,17 @@ function updateBadges() {
 
     const rows = scores[criteria.id] || {};
     const subCriteria = (criteria.subCriteria || []).map(normalizeSubCriterion);
-    const hasPendingNormal = subCriteria.some((sub, idx) => sub.type === "normal" && rows[idx] === undefined);
+    const subtotal = weighted ? (weightedSubtotal(criteria.id, criteria.subCriteria.length) ?? 0) : 0;
+    const metaEl = document.querySelector(`[data-criteria-meta="${criteria.id}"]`);
+    if (weighted && metaEl) {
+      metaEl.textContent = `Totale criterio pesato: ${subtotal.toFixed(2).replace(".", ",")}`;
+    }
+
+    const hasPendingNormal = subCriteria.some((sub, idx) => {
+      if (sub.type !== "normal") return false;
+      if (rows[idx] === undefined) return true;
+      return weighted && (rows[idx]?.score === null || rows[idx]?.score === undefined);
+    });
     const hasPendingYesNo = subCriteria.some((sub, idx) => {
       if (sub.type !== "yesno") return false;
       const answer = rows[idx]?.answer;
@@ -1142,6 +1179,11 @@ function updateBadges() {
 
     if (hasPendingNormal || hasPendingYesNo) {
       allScored = false;
+      if (weighted) {
+        weightedOverallTotal += subtotal;
+        const anyYesNoFailed = subCriteria.some((sub, idx) => sub.type === "yesno" && rows[idx]?.answer === false);
+        anyYesNoFailedOverall = anyYesNoFailedOverall || anyYesNoFailed;
+      }
       badge.className = "badge pending";
       badge.textContent = "–";
       badge.classList.toggle("hidden", weighted);
@@ -1154,13 +1196,8 @@ function updateBadges() {
     anyYesNoFailedOverall = anyYesNoFailedOverall || anyYesNoFailed;
 
     if (weighted) {
-      const subtotal = weightedSubtotal(criteria.id, criteria.subCriteria.length) ?? 0;
       weightedOverallTotal += subtotal;
       badge.classList.add("hidden");
-      const metaEl = document.querySelector(`[data-criteria-meta="${criteria.id}"]`);
-      if (metaEl) {
-        metaEl.textContent = `Totale criterio pesato: ${subtotal.toFixed(2).replace(".", ",")}`;
-      }
       return;
     }
 
@@ -1188,10 +1225,10 @@ function updateBadges() {
   } else if (!allScored) {
     elOverallBadge.className = "badge pending";
     elOverallBadge.textContent = "–";
-    // For weighted pathway, keep threshold-only display while scoring in progress
+    // For weighted pathways, show the running total even while evaluation is incomplete.
     if (weighted && elOverallLabel) {
       const thresholdInt = Math.round(currentPathwaySettings.overallThreshold ?? 0);
-      elOverallLabel.textContent = `Risultato Complessivo: – · Soglia: ${thresholdInt}/100`;
+      elOverallLabel.textContent = `Risultato Complessivo: ${formatPdfAverage(weightedOverallTotal ?? 0)}/100 · Soglia: ${thresholdInt}/100`;
     }
   } else {
     const overallPass = weighted
@@ -1202,9 +1239,8 @@ function updateBadges() {
 
     // For weighted pathway, update the overall label with score and threshold
     if (weighted && elOverallLabel) {
-      const formattedScore = formatPdfAverage(weightedOverallTotal);
       const thresholdInt = Math.round(currentPathwaySettings.overallThreshold ?? 0);
-      elOverallLabel.textContent = `Risultato Complessivo: ${Math.round(weightedOverallTotal ?? 0)}/100 · Soglia: ${thresholdInt}/100`;
+      elOverallLabel.textContent = `Risultato Complessivo: ${formatPdfAverage(weightedOverallTotal ?? 0)}/100 · Soglia: ${thresholdInt}/100`;
     }
   }
 }
@@ -1230,19 +1266,18 @@ function applyRowState(rowEl, score) {
       c.classList.toggle("filled", parseInt(c.dataset.value, 10) <= score);
     });
   } else {
-    // Update dropdown for weighted pathways
-    const dropdown = rowEl.querySelector(".decimal-dropdown");
-    const input = rowEl.querySelector(".decimal-input");
-    if (dropdown) {
-      dropdown.value = score > 0 ? score : "";
-    }
+    // Update combobox for weighted pathways
+    const input = rowEl.querySelector(".decimal-combobox");
     if (input) {
-      input.value = score > 0 ? score.toFixed(1).replace(".", ",") : "";
+      input.value = score === null || score === undefined ? "" : score.toFixed(1).replace(".", ",");
+      input.classList.remove("field-error");
     }
   }
 
   // Faded / not-evaluated visual
-  const isCleared = score === 0;
+  const isCleared = weighted
+    ? score === null || score === undefined
+    : score === 0;
   rowEl.classList.toggle("row--cleared", isCleared);
 
   // "Not evaluated" label
@@ -1306,43 +1341,51 @@ function isValidDecimalValue(val) {
   return validValues.includes(num);
 }
 
-function onDecimalDropdownChange(e) {
-  const select = e.currentTarget;
-  const row = select.closest(".subcriteria-row");
-  const cid = row.dataset.criteriaId;
-  const idx = parseInt(row.dataset.subIndex, 10);
-  const value = parseFloat(select.value);
-
-  if (!isValidDecimalValue(value)) return;
-
-  const entry = ensureScoreEntry(cid, idx);
-  entry.score = value;
-  console.log(`[onDecimalDropdownChange] ${cid}[${idx}] → ${value}`, scores[cid]);
-  applyRowState(row, value);
-  updateBadges();
+function parseWeightedScoreValue(rawValue) {
+  const normalized = String(rawValue ?? "").trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-function onDecimalDropdownInput(e) {
+function onWeightedScoreInput(e) {
   const input = e.currentTarget;
-  const value = input.value.trim();
+  const rawValue = String(input.value ?? "").trim();
+  if (!rawValue) {
+    input.classList.remove("field-error");
+    return;
+  }
 
-  if (!value) return;
+  const value = parseWeightedScoreValue(rawValue);
+  input.classList.toggle("field-error", !isValidDecimalValue(value));
+}
 
-  const num = parseFloat(value);
-  if (!isValidDecimalValue(num)) {
+function onWeightedScoreCommit(e) {
+  const input = e.currentTarget;
+  const row = input.closest(".subcriteria-row");
+  const cid = row.dataset.criteriaId;
+  const idx = parseInt(row.dataset.subIndex, 10);
+  const value = parseWeightedScoreValue(input.value);
+
+  if (value === null) {
+    input.classList.remove("field-error");
+    const entry = ensureScoreEntry(cid, idx);
+    entry.score = null;
+    applyRowState(row, null);
+    updateBadges();
+    return;
+  }
+
+  if (!isValidDecimalValue(value)) {
     input.classList.add("field-error");
     return;
   }
 
   input.classList.remove("field-error");
-  const row = input.closest(".subcriteria-row");
-  const cid = row.dataset.criteriaId;
-  const idx = parseInt(row.dataset.subIndex, 10);
-
   const entry = ensureScoreEntry(cid, idx);
-  entry.score = num;
-  console.log(`[onDecimalDropdownInput] ${cid}[${idx}] → ${num}`, scores[cid]);
-  applyRowState(row, num);
+  entry.score = value;
+  console.log(`[onWeightedScoreCommit] ${cid}[${idx}] → ${value}`, scores[cid]);
+  applyRowState(row, value);
   updateBadges();
 }
 
@@ -1425,7 +1468,9 @@ function getEvaluationState() {
       if (entry.answer !== undefined) {
         normalizedEntry.answer = normalizeYesNoAnswer(entry.answer);
       } else {
-        normalizedEntry.score = Number(entry.score) || 0;
+        normalizedEntry.score = entry.score === null || entry.score === undefined || entry.score === ""
+          ? (isWeightedPathway() ? null : 0)
+          : (Number.isFinite(Number(entry.score)) ? Number(entry.score) : (isWeightedPathway() ? null : 0));
       }
       return normalizedEntry;
     });
@@ -2392,7 +2437,7 @@ function getPdfScoreLabel(entry, sub) {
   if (sub.type === "yesno") {
     return `Risposta: ${entry.answer === true ? "Sì" : (entry.answer === false ? "No" : "Non risposto")}`;
   }
-  if (!entry.score) return "Punteggio: Non valutato";
+  if (entry.score === null || entry.score === undefined || Number.isNaN(Number(entry.score))) return "Punteggio: Non valutato";
   return isWeightedPathway()
     ? `Punteggio: ${formatPdfAverageDec(entry.score ?? 0, 0)}/5    Peso: ${formatPdfAverageDec(sub.weight ?? 0, 2)}`
     : `Punteggio: ${formatPdfAverageDec(entry.score ?? 0, 0)}/5`;
@@ -2550,7 +2595,9 @@ function renderEvaluator(criteriaArr) {
           comment: typeof existingEntry.comment === "string" ? existingEntry.comment : "",
         }
         : {
-          score: Number.isFinite(Number(existingEntry.score)) ? Number(existingEntry.score) : 0,
+          score: existingEntry.score === null || existingEntry.score === undefined || existingEntry.score === ""
+            ? (weighted ? null : 0)
+            : (Number.isFinite(Number(existingEntry.score)) ? Number(existingEntry.score) : (weighted ? null : 0)),
           comment: typeof existingEntry.comment === "string" ? existingEntry.comment : "",
         };
     });
@@ -2602,73 +2649,37 @@ function renderEvaluator(criteriaArr) {
         row.classList.add("row--cleared");
 
         if (weighted) {
-          // Decimal dropdown for weighted pathways (Linea A, D)
+          // Single combobox for weighted pathways (Linea A, D)
           const dropdownWrap = document.createElement("div");
           dropdownWrap.className = "decimal-dropdown-wrap";
 
           const validValues = getValidDecimalValues();
-          const dropdown = document.createElement("select");
-          dropdown.className = "field decimal-dropdown";
-          dropdown.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
+          const datalistId = `weighted-values-${criteria.id}-${subIdx}`;
 
-          // Default option (value 0)
-          const defaultOpt = document.createElement("option");
-          defaultOpt.value = "";
-          defaultOpt.textContent = "Seleziona valore";
-          dropdown.appendChild(defaultOpt);
+          const combobox = document.createElement("input");
+          combobox.type = "text";
+          combobox.className = "field decimal-combobox";
+          combobox.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
+          combobox.setAttribute("list", datalistId);
+          combobox.placeholder = "Seleziona o scrivi";
+          combobox.autocomplete = "off";
+          combobox.inputMode = "decimal";
+          combobox.value = entry.score === null || entry.score === undefined ? "" : entry.score.toFixed(1).replace(".", ",");
+          combobox.addEventListener("input", onWeightedScoreInput);
+          combobox.addEventListener("change", onWeightedScoreCommit);
+          combobox.addEventListener("blur", onWeightedScoreCommit);
 
-          // Add options for each valid decimal value
+          const datalist = document.createElement("datalist");
+          datalist.id = datalistId;
+
           validValues.forEach(val => {
             const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = val.toFixed(1).replace(".", ",");
-            dropdown.appendChild(opt);
+            opt.value = val.toFixed(1).replace(".", ",");
+            datalist.appendChild(opt);
           });
 
-          dropdown.value = entry.score && entry.score > 0 ? String(entry.score) : "";
-          dropdown.addEventListener("change", onDecimalDropdownChange);
-
-          // Text input for manual entry with validation
-          const manualInput = document.createElement("input");
-          manualInput.type = "text";
-          manualInput.className = "field decimal-input";
-          manualInput.placeholder = "o scrivi (es: 2.5)";
-          manualInput.value = entry.score > 0 ? entry.score.toFixed(1).replace(".", ",") : "";
-          manualInput.addEventListener("input", (e) => {
-            const inputVal = e.target.value.trim().replace(",", ".");
-            const numVal = parseFloat(inputVal);
-
-            if (inputVal === "") {
-              e.target.classList.remove("field-error");
-              // Clear the score when input is empty
-              const row = e.target.closest(".subcriteria-row");
-              const cid = row.dataset.criteriaId;
-              const idx = parseInt(row.dataset.subIndex, 10);
-              const entry = ensureScoreEntry(cid, idx);
-              entry.score = 0;
-              dropdown.value = "";
-              applyRowState(row, 0);
-              updateBadges();
-              return;
-            }
-
-            if (isValidDecimalValue(numVal)) {
-              e.target.classList.remove("field-error");
-              const row = e.target.closest(".subcriteria-row");
-              const cid = row.dataset.criteriaId;
-              const idx = parseInt(row.dataset.subIndex, 10);
-              const entry = ensureScoreEntry(cid, idx);
-              entry.score = numVal;
-              dropdown.value = numVal;
-              applyRowState(row, numVal);
-              updateBadges();
-            } else {
-              e.target.classList.add("field-error");
-            }
-          });
-
-          dropdownWrap.appendChild(dropdown);
-          dropdownWrap.appendChild(manualInput);
+          dropdownWrap.appendChild(combobox);
+          dropdownWrap.appendChild(datalist);
           controls.appendChild(dropdownWrap);
         } else {
           // Integer circles for non-weighted pathways (Linea B, C)

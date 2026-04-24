@@ -1222,8 +1222,7 @@ body.drawer-resizing .drawer-resize-handle::before {
   flex-wrap: wrap;
 }
 
-.decimal-dropdown,
-.decimal-input {
+.decimal-combobox {
   font-family: var(--font-main);
   font-size: .9rem;
   padding: 10px 12px;
@@ -1234,30 +1233,24 @@ body.drawer-resizing .drawer-resize-handle::before {
   transition: all var(--transition);
 }
 
-.decimal-dropdown:focus,
-.decimal-input:focus {
+.decimal-combobox:focus {
   outline: none;
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.decimal-dropdown {
-  min-width: 120px;
-  cursor: pointer;
-}
-
-.decimal-input {
-  min-width: 100px;
+.decimal-combobox {
+  min-width: 160px;
   flex: 0 1 auto;
 }
 
-.decimal-input.field-error {
+.decimal-combobox.field-error {
   border-color: var(--fail-color);
   background: var(--fail-bg);
   color: var(--fail-color);
 }
 
-.decimal-input.field-error::placeholder {
+.decimal-combobox.field-error::placeholder {
   color: var(--fail-color);
   opacity: 0.6;
 }
