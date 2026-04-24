@@ -1348,9 +1348,20 @@ function parseWeightedScoreValue(rawValue) {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function openWeightedScoreOptions(input) {
+  input.closest(".criteria-card")?.classList.add("criteria-card--dropdown-open");
+  input.closest(".decimal-dropdown-wrap")?.classList.add("is-open");
+}
+
+function closeWeightedScoreOptions(input) {
+  input.closest(".criteria-card")?.classList.remove("criteria-card--dropdown-open");
+  input.closest(".decimal-dropdown-wrap")?.classList.remove("is-open");
+}
+
 function onWeightedScoreInput(e) {
   const input = e.currentTarget;
   const rawValue = String(input.value ?? "").trim();
+  openWeightedScoreOptions(input);
   if (!rawValue) {
     input.classList.remove("field-error");
     return;
@@ -1373,6 +1384,7 @@ function onWeightedScoreCommit(e) {
     entry.score = null;
     applyRowState(row, null);
     updateBadges();
+    closeWeightedScoreOptions(input);
     return;
   }
 
@@ -1387,6 +1399,27 @@ function onWeightedScoreCommit(e) {
   console.log(`[onWeightedScoreCommit] ${cid}[${idx}] → ${value}`, scores[cid]);
   applyRowState(row, value);
   updateBadges();
+  closeWeightedScoreOptions(input);
+}
+
+function onWeightedScoreBlur(e) {
+  const input = e.currentTarget;
+  window.setTimeout(() => onWeightedScoreCommit({ currentTarget: input }), 0);
+}
+
+function onWeightedScoreOptionPointerDown(e) {
+  e.preventDefault();
+}
+
+function onWeightedScoreOptionClick(e) {
+  const option = e.currentTarget;
+  const wrap = option.closest(".decimal-dropdown-wrap");
+  const input = wrap?.querySelector(".decimal-combobox");
+  if (!input) return;
+
+  input.value = option.dataset.value || option.textContent || "";
+  input.classList.remove("field-error");
+  onWeightedScoreCommit({ currentTarget: input });
 }
 
 function onCommentInput(e) {
@@ -2654,32 +2687,37 @@ function renderEvaluator(criteriaArr) {
           dropdownWrap.className = "decimal-dropdown-wrap";
 
           const validValues = getValidDecimalValues();
-          const datalistId = `weighted-values-${criteria.id}-${subIdx}`;
 
           const combobox = document.createElement("input");
           combobox.type = "text";
           combobox.className = "field decimal-combobox";
           combobox.setAttribute("aria-label", `Punteggio per: ${sub.text}`);
-          combobox.setAttribute("list", datalistId);
           combobox.placeholder = "Seleziona o scrivi";
           combobox.autocomplete = "off";
           combobox.inputMode = "decimal";
           combobox.value = entry.score === null || entry.score === undefined ? "" : entry.score.toFixed(1).replace(".", ",");
+          combobox.addEventListener("focus", () => openWeightedScoreOptions(combobox));
           combobox.addEventListener("input", onWeightedScoreInput);
           combobox.addEventListener("change", onWeightedScoreCommit);
-          combobox.addEventListener("blur", onWeightedScoreCommit);
+          combobox.addEventListener("blur", onWeightedScoreBlur);
 
-          const datalist = document.createElement("datalist");
-          datalist.id = datalistId;
+          const optionList = document.createElement("div");
+          optionList.className = "decimal-options";
+          optionList.setAttribute("role", "listbox");
 
           validValues.forEach(val => {
-            const opt = document.createElement("option");
-            opt.value = val.toFixed(1).replace(".", ",");
-            datalist.appendChild(opt);
+            const optionBtn = document.createElement("button");
+            optionBtn.type = "button";
+            optionBtn.className = "decimal-option";
+            optionBtn.dataset.value = val.toFixed(1).replace(".", ",");
+            optionBtn.textContent = optionBtn.dataset.value;
+            optionBtn.addEventListener("pointerdown", onWeightedScoreOptionPointerDown);
+            optionBtn.addEventListener("click", onWeightedScoreOptionClick);
+            optionList.appendChild(optionBtn);
           });
 
           dropdownWrap.appendChild(combobox);
-          dropdownWrap.appendChild(datalist);
+          dropdownWrap.appendChild(optionList);
           controls.appendChild(dropdownWrap);
         } else {
           // Integer circles for non-weighted pathways (Linea B, C)

@@ -911,17 +911,22 @@ body.drawer-resizing .drawer-resize-handle::before {
 }
 
 .criteria-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
+  overflow: visible;
   transition: box-shadow var(--transition);
   animation: fadeUp .3s ease both;
 }
 
 .criteria-card:hover {
   box-shadow: var(--shadow-hover);
+}
+
+.criteria-card--dropdown-open {
+  z-index: 30;
 }
 
 .criteria-card:nth-child(1) {
@@ -1010,6 +1015,7 @@ body.drawer-resizing .drawer-resize-handle::before {
 }
 
 .subcriteria-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
@@ -1216,10 +1222,14 @@ body.drawer-resizing .drawer-resize-handle::before {
 
 /* ─── Decimal Dropdown (Weighted Pathways) ─────────────────────── */
 .decimal-dropdown-wrap {
+  position: relative;
   display: flex;
-  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.decimal-dropdown-wrap.is-open {
+  z-index: 10;
 }
 
 .decimal-combobox {
@@ -1242,6 +1252,45 @@ body.drawer-resizing .drawer-resize-handle::before {
 .decimal-combobox {
   min-width: 160px;
   flex: 0 1 auto;
+}
+
+.decimal-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: none;
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.decimal-dropdown-wrap.is-open .decimal-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.decimal-option {
+  padding: 8px 10px;
+  font-family: var(--font-main);
+  font-size: .85rem;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.decimal-option:hover {
+  border-color: var(--border-focus);
+  background: var(--accent-soft);
 }
 
 .decimal-combobox.field-error {
